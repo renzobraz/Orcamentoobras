@@ -1,0 +1,5 @@
+{
+  "name": "CalcConstru - Simulador de Viabilidade Civil",
+  "description": "Uma ferramenta avançada para engenheiros e incorporadores calcularem o custo de obras e o VGV (Valor Geral de Vendas) com base no CUB e parâmetros personalizados.",
+  "requestFramePermissions": []
+}
