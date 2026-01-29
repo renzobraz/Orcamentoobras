@@ -1,3 +1,4 @@
+
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -7,8 +8,19 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      // Isso permite que o código use process.env.API_KEY como fazia antes
       'process.env': env
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom'],
+            charts: ['recharts'],
+            supabase: ['@supabase/supabase-js'],
+            ai: ['@google/genai']
+          }
+        }
+      }
     }
   }
 })

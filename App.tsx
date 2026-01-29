@@ -1,12 +1,15 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { ProjectData, ProjectType, StandardType, CalculationResults, DetailedCosts } from './types';
 import { DEFAULT_CUB, INITIAL_DATA } from './constants';
 import { InputField } from './components/InputSection';
-import { CostBreakdownChart } from './components/ChartSection';
-import { SettingsSection } from './components/SettingsSection';
 import { analyzeFeasibility } from './services/geminiService';
 import { saveProject, fetchProjects, deleteProject, testConnection } from './services/supabaseClient';
+
+// Lazy load heavy components to fix chunk size warning and improve performance
+const CostBreakdownChart = React.lazy(() => import('./components/ChartSection').then(module => ({ default: module.CostBreakdownChart })));
+const CashFlowChart = React.lazy(() => import('./components/ChartSection').then(module => ({ default: module.CashFlowChart })));
+const SettingsSection = React.lazy(() => import('./components/SettingsSection').then(module => ({ default: module.SettingsSection })));
 
 const App: React.FC = () => {
   const [data, setData] = useState<ProjectData>(INITIAL_DATA);
@@ -131,7 +134,46 @@ const App: React.FC = () => {
       { category: 'Outros', value: data.otherCosts, percentage: (data.otherCosts / totalCost) * 100 },
     ];
 
-    return { constructionCost, totalCost, vgv, profit, roi, breakdown };
+    // Estimativa de Prazo (Meses)
+    let timeEstimate = 0;
+    if (data.type === ProjectType.HOUSE) {
+        timeEstimate = 5 + (data.area / 30);
+    } else {
+        timeEstimate = 12 + (data.area / 50);
+    }
+    const constructionTime = Math.max(3, Math.ceil(timeEstimate));
+
+    // Fluxo de Caixa Simples (Distribuição Normal/Sino simplificada)
+    // Distribuímos apenas o Custo de Construção + Fundação ao longo do tempo
+    // Terreno e Documentação geralmente são no início (Mês 1)
+    const costToDistribute = constructionCost + data.foundationCost;
+    const cashFlow = [];
+    
+    // Distribuição: 20% inicial (mobilização), 60% meio (obra pesada), 20% final (acabamento)
+    const initialPhase = Math.ceil(constructionTime * 0.2);
+    const middlePhase = Math.ceil(constructionTime * 0.6);
+    const finalPhase = constructionTime - initialPhase - middlePhase;
+    
+    const initialCostPerMonth = (costToDistribute * 0.20) / initialPhase;
+    const middleCostPerMonth = (costToDistribute * 0.60) / middlePhase;
+    const finalCostPerMonth = (costToDistribute * 0.20) / finalPhase;
+
+    for (let i = 1; i <= constructionTime; i++) {
+        let val = 0;
+        if (i <= initialPhase) val = initialCostPerMonth;
+        else if (i <= initialPhase + middlePhase) val = middleCostPerMonth;
+        else val = finalCostPerMonth;
+        
+        // Adiciona Terreno e Doc no Mês 1
+        if (i === 1) val += data.landValue + data.documentationCost + data.otherCosts;
+
+        // Adiciona Marketing distribuído linearmente
+        val += (data.marketingCost / constructionTime);
+
+        cashFlow.push({ month: i, value: val });
+    }
+
+    return { constructionCost, totalCost, vgv, profit, roi, breakdown, constructionTime, cashFlow };
   }, [data]);
 
   const handleStandardChange = (std: StandardType) => {
@@ -235,7 +277,9 @@ const App: React.FC = () => {
         
         {activeTab === 'settings' && (
             <div className="max-w-4xl mx-auto">
-                <SettingsSection onConfigUpdate={checkDbConnection} />
+                <Suspense fallback={<div className="flex justify-center py-20 text-slate-400">Carregando configurações...</div>}>
+                    <SettingsSection onConfigUpdate={checkDbConnection} />
+                </Suspense>
             </div>
         )}
 
@@ -464,6 +508,21 @@ const App: React.FC = () => {
                       <InputField label="Preço p/ Unidade" value={data.unitPrice} onChange={(v) => setData({...data, unitPrice: v})} prefix="R$" />
                       <InputField label="Total de Unidades" value={data.totalUnits} onChange={(v) => setData({...data, totalUnits: v})} />
                     </div>
+                    
+                    <div className="mt-6 pt-6 border-t border-slate-100">
+                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Estimativa de Prazo</h3>
+                       <div className="flex items-center gap-3">
+                         <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                         </div>
+                         <div>
+                            <span className="text-2xl font-bold text-slate-800">{results.constructionTime}</span>
+                            <span className="text-sm text-slate-500 ml-1">Meses de Obra</span>
+                         </div>
+                       </div>
+                    </div>
                  </section>
               </div>
 
@@ -493,19 +552,33 @@ const App: React.FC = () => {
 
               {/* Charts and Breakdown */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 min-h-[350px]">
                    <h2 className="text-lg font-bold mb-4 text-slate-800 flex justify-between items-center">
                      <span>Composição de Custos</span>
                      <span className="text-xs text-slate-400 font-normal">Baseado em {data.area}m²</span>
                    </h2>
-                   <CostBreakdownChart results={results} />
+                   <Suspense fallback={<div className="h-64 flex items-center justify-center text-slate-300">Carregando gráfico...</div>}>
+                      <CostBreakdownChart results={results} />
+                   </Suspense>
                  </div>
                  
-                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 min-h-[350px]">
+                   <h2 className="text-lg font-bold mb-4 text-slate-800 flex justify-between items-center">
+                     <span>Fluxo de Caixa (Mensal)</span>
+                     <span className="text-xs text-slate-400 font-normal">Estimativa de Desembolso</span>
+                   </h2>
+                   <Suspense fallback={<div className="h-64 flex items-center justify-center text-slate-300">Carregando fluxo...</div>}>
+                      <CashFlowChart results={results} />
+                   </Suspense>
+                 </div>
+              </div>
+              
+              {/* Detailed Table (Full Width) */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                    <h2 className="text-lg font-bold mb-4 text-slate-800">Detalhamento dos Valores</h2>
-                   <div className="space-y-3">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3">
                      {results.breakdown.map((item, i) => (
-                       <div key={i} className="flex flex-col gap-1">
+                       <div key={i} className="flex flex-col gap-1 pb-3 border-b border-slate-50 last:border-0">
                          <div className="flex justify-between text-sm">
                            <span className="text-slate-600 font-medium">{item.category}</span>
                            <span className="text-slate-900 font-bold">{formatCurrency(item.value)}</span>
@@ -522,15 +595,14 @@ const App: React.FC = () => {
                          </div>
                        </div>
                      ))}
-                     <div className="pt-4 mt-4 border-t border-slate-100 flex justify-between items-center bg-slate-50 p-3 rounded-xl">
+                   </div>
+                   <div className="pt-4 mt-4 border-t border-slate-100 flex justify-between items-center bg-slate-50 p-4 rounded-xl">
                         <div className="flex flex-col">
                           <span className="font-bold text-slate-800 text-xs">Custo de Obra por m²:</span>
                           <span className="text-[10px] text-slate-400">Considerando todos os custos</span>
                         </div>
                         <span className="font-black text-lg text-blue-700">{formatCurrency(results.totalCost / data.area)}</span>
-                     </div>
                    </div>
-                 </div>
               </div>
 
               {/* AI Analysis Section */}

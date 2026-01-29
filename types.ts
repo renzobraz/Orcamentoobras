@@ -48,9 +48,14 @@ export interface CalculationResults {
   vgv: number;
   profit: number;
   roi: number;
+  constructionTime: number; // Prazo estimado em meses
   breakdown: {
     category: string;
     value: number;
     percentage: number;
+  }[];
+  cashFlow: {
+    month: number;
+    value: number;
   }[];
 }

@@ -16,10 +16,11 @@ export const analyzeFeasibility = async (data: ProjectData, results: Calculation
     Custo Total: R$ ${results.totalCost.toLocaleString()}
     Lucro Estimado: R$ ${results.profit.toLocaleString()}
     ROI: ${results.roi.toFixed(2)}%
+    Prazo Estimado de Obra: ${results.constructionTime} meses
 
     Por favor, forneça:
     1. Uma breve avaliação da lucratividade.
-    2. Riscos potenciais (ex: custo de fundação alto para a área, margem apertada).
+    2. Riscos potenciais (ex: custo de fundação alto para a área, margem apertada, prazo de obra desafiador).
     3. Sugestões de melhoria (ex: otimização de m² ou aumento do VGV).
     4. Conclusão se o projeto parece viável.
     
