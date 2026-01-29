@@ -2,7 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { ProjectData, CalculationResults } from "../types";
 
-export const analyzeFeasibility = async (data: ProjectData, results: CalculationResults) => {
+export const analyzeFeasibility = async (data: ProjectData, results: CalculationResults): Promise<string> => {
   // Initialize Gemini API client with required named parameter using process.env.API_KEY
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
@@ -33,7 +33,8 @@ export const analyzeFeasibility = async (data: ProjectData, results: Calculation
       contents: prompt,
     });
     // Correctly access the .text property of GenerateContentResponse
-    return response.text;
+    // Fallback para string vazia caso undefined para satisfazer o TypeScript
+    return response.text || "";
   } catch (error) {
     console.error("Erro na análise da IA:", error);
     return "Não foi possível gerar a análise da IA no momento. Verifique sua conexão ou tente novamente mais tarde.";

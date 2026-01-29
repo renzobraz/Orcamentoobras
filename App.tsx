@@ -148,7 +148,7 @@ const App: React.FC = () => {
   const handleAiAnalysis = async () => {
     setIsAnalyzing(true);
     const result = await analyzeFeasibility(data, results);
-    setAiAnalysis(result);
+    setAiAnalysis(result || '');
     setIsAnalyzing(false);
   };
 
