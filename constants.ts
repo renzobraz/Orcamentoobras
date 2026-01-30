@@ -84,6 +84,15 @@ export const INITIAL_DATA = {
     requiredMargin: 20
   },
 
+  // Inicialização Financeiro Detalhado
+  financials: {
+    landCommissionPct: 6, // 6%
+    landRegistryPct: 4, // 4%
+    saleCommissionPct: 4, // 4%
+    taxesPct: 4.09, // RET
+    marketingSplitLaunch: 60 // 60%
+  },
+
   brokerName: '',
   brokerPhone: '',
   observations: ''

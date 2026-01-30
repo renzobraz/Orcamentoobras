@@ -2,51 +2,45 @@
 import React, { useState, useEffect } from 'react';
 import { updateSupabaseConfig, getStoredConfig, testConnection, getSupabase } from '../services/supabaseClient';
 
-const SQL_SCHEMA = `-- Atualização da Tabela Projects
--- As colunas novas usam JSONB para flexibilidade.
+const SQL_SCHEMA = `-- SCRIPT DE CORREÇÃO (Rode no Supabase SQL Editor)
 
+-- 1. Cria a tabela base se não existir
 create table if not exists public.projects (
   "id" uuid primary key default gen_random_uuid(),
   "created_at" timestamp with time zone default timezone('utc'::text, now()) not null,
-  
   "name" text not null,
   "type" text not null,
-  "standard" text not null,
-  "area" numeric not null default 0,
-  
-  "cubValue" numeric not null default 0,
-  "landValue" numeric not null default 0,
-  "foundationCost" numeric not null default 0,
-  "documentationCost" numeric not null default 0,
-  "marketingCost" numeric not null default 0,
-  "otherCosts" numeric not null default 0,
-  
-  -- Legado
-  "unitPrice" numeric default 0,
-  "totalUnits" numeric default 0,
-
-  "brokerName" text,
-  "brokerPhone" text,
-  "observations" text,
-  
-  "useDetailedCosts" boolean not null default false,
-  "detailedCosts" jsonb,
-  
-  -- COLUNAS JSONB
-  "units" jsonb,  
-  "zoning" jsonb, 
-  "media" jsonb,
-  "segmentedCosts" jsonb, -- Adicionado recentemente
-  "quickFeasibility" jsonb -- NOVO: Viabilidade Rápida
+  "standard" text not null
 );
 
-alter table public.projects enable row level security;
+-- 2. Adiciona colunas que podem estar faltando (ALTER TABLE)
+alter table public.projects add column if not exists "area" numeric default 0;
+alter table public.projects add column if not exists "cubValue" numeric default 0;
+alter table public.projects add column if not exists "landValue" numeric default 0;
+alter table public.projects add column if not exists "foundationCost" numeric default 0;
+alter table public.projects add column if not exists "documentationCost" numeric default 0;
+alter table public.projects add column if not exists "marketingCost" numeric default 0;
+alter table public.projects add column if not exists "otherCosts" numeric default 0;
+alter table public.projects add column if not exists "unitPrice" numeric default 0;
+alter table public.projects add column if not exists "totalUnits" numeric default 0;
+alter table public.projects add column if not exists "brokerName" text;
+alter table public.projects add column if not exists "brokerPhone" text;
+alter table public.projects add column if not exists "observations" text;
+alter table public.projects add column if not exists "useDetailedCosts" boolean default false;
 
-create policy "Public Access Policy"
-on public.projects
-for all
-using (true)
-with check (true);
+-- 3. COLUNAS NOVAS (JSONB) - O erro de salvamento geralmente é aqui
+alter table public.projects add column if not exists "detailedCosts" jsonb;
+alter table public.projects add column if not exists "units" jsonb;
+alter table public.projects add column if not exists "zoning" jsonb;
+alter table public.projects add column if not exists "media" jsonb;
+alter table public.projects add column if not exists "segmentedCosts" jsonb;
+alter table public.projects add column if not exists "quickFeasibility" jsonb;
+alter table public.projects add column if not exists "financials" jsonb;
+
+-- 4. Permissões
+alter table public.projects enable row level security;
+drop policy if exists "Public Access Policy" on public.projects;
+create policy "Public Access Policy" on public.projects for all using (true) with check (true);
 `;
 
 interface SettingsProps {
@@ -103,12 +97,15 @@ export const SettingsSection: React.FC<SettingsProps> = ({ onConfigUpdate }) => 
       return;
     }
 
-    const { error } = await client.from('projects').select('count', { count: 'exact', head: true });
+    // Verifica se consegue selecionar a coluna 'financials' que é nova
+    const { error } = await client.from('projects').select('financials').limit(1);
     
     if (!error) {
-      setVerificationMsg("✅ Tabela 'projects' encontrada!");
-    } else if (error.code === '42P01') {
-      setVerificationMsg("⚠️ Tabela não encontrada. Use o SQL abaixo.");
+      setVerificationMsg("✅ Tabela atualizada com sucesso!");
+    } else if (error.code === '42703') { // Undefined column
+      setVerificationMsg("⚠️ Colunas faltando! Rode o SQL abaixo.");
+    } else if (error.code === '42P01') { // Undefined table
+      setVerificationMsg("⚠️ Tabela não existe. Rode o SQL abaixo.");
     } else {
       setVerificationMsg(`❌ Erro: ${error.message}`);
     }
@@ -116,7 +113,7 @@ export const SettingsSection: React.FC<SettingsProps> = ({ onConfigUpdate }) => 
 
   const copySQL = () => {
     navigator.clipboard.writeText(SQL_SCHEMA);
-    alert("SQL Copiado!");
+    alert("SQL Copiado! Cole no 'SQL Editor' do Supabase.");
   };
 
   return (
@@ -146,20 +143,21 @@ export const SettingsSection: React.FC<SettingsProps> = ({ onConfigUpdate }) => 
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
          <div className="bg-white p-6 rounded-2xl border border-slate-200">
-            <h3 className="font-bold text-slate-800 mb-2">Verificador</h3>
-            {verificationMsg && <div className="mb-4 text-xs bg-slate-50 p-2 rounded">{verificationMsg}</div>}
-            <button onClick={verifyTables} className="w-full bg-slate-100 text-slate-700 font-bold py-2 rounded-lg text-sm">Verificar Tabela</button>
+            <h3 className="font-bold text-slate-800 mb-2">Diagnóstico de Banco de Dados</h3>
+            <p className="text-xs text-slate-500 mb-4">Se não estiver salvando, provavelmente faltam colunas no banco.</p>
+            {verificationMsg && <div className="mb-4 text-xs bg-slate-50 p-2 rounded font-mono border border-slate-200">{verificationMsg}</div>}
+            <button onClick={verifyTables} className="w-full bg-slate-100 text-slate-700 font-bold py-2 rounded-lg text-sm hover:bg-slate-200">Verificar Tabela</button>
          </div>
 
          <div className="bg-blue-600 p-6 rounded-2xl text-white">
-            <h3 className="font-bold mb-2">Schema SQL (Atualizado V3)</h3>
-            <p className="text-xs text-blue-100 mb-4">Inclui suporte a JSONB para Viabilidade Rápida.</p>
-            <button onClick={copySQL} className="w-full bg-white text-blue-700 font-bold py-2 rounded-lg text-sm">Copiar SQL</button>
+            <h3 className="font-bold mb-2">Script de Correção (SQL)</h3>
+            <p className="text-xs text-blue-100 mb-4">Copie este código e execute no <b>SQL Editor</b> do Supabase para adicionar as colunas faltantes.</p>
+            <button onClick={copySQL} className="w-full bg-white text-blue-700 font-bold py-2 rounded-lg text-sm hover:bg-blue-50">Copiar SQL de Correção</button>
          </div>
       </div>
 
-      <div className="bg-slate-900 rounded-2xl p-6 overflow-x-auto">
-         <pre className="text-xs font-mono text-slate-300">{SQL_SCHEMA}</pre>
+      <div className="bg-slate-900 rounded-2xl p-6 overflow-x-auto border border-slate-800">
+         <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap">{SQL_SCHEMA}</pre>
       </div>
     </div>
   );

@@ -74,6 +74,15 @@ export interface QuickFeasibilityData {
   requiredMargin: number; // % Margem desejada (Padrão 20%)
 }
 
+// --- PREMISSAS FINANCEIRAS DETALHADAS ---
+export interface FinancialAssumptions {
+  landCommissionPct: number; // % Comissão na Compra do Terreno (ex: 6%)
+  landRegistryPct: number; // % ITBI e Registro (ex: 4%)
+  saleCommissionPct: number; // % Comissão de Venda (Stand/Corretor) (ex: 4%)
+  taxesPct: number; // % Impostos s/ Venda (RET) (ex: 4.09%)
+  marketingSplitLaunch: number; // % do Marketing gasto no Lançamento (ex: 60%)
+}
+
 // --- ESTRUTURA DO DASHBOARD ---
 export interface DashboardData {
   synthetic: {
@@ -137,6 +146,9 @@ export interface ProjectData {
   
   // Módulo Viabilidade Rápida
   quickFeasibility?: QuickFeasibilityData;
+  
+  // Módulo Financeiro Avançado
+  financials: FinancialAssumptions;
 
   brokerName?: string;
   brokerPhone?: string;

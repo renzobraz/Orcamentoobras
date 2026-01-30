@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
-import { ProjectData, ProjectType, StandardType, CalculationResults, DetailedCosts, ApartmentUnit, SegmentedCosts, QuickFeasibilityData, DashboardData } from './types';
+import { ProjectData, ProjectType, StandardType, CalculationResults, DetailedCosts, ApartmentUnit, SegmentedCosts, QuickFeasibilityData, DashboardData, FinancialAssumptions } from './types';
 import { DEFAULT_CUB, INITIAL_DATA } from './constants';
 import { InputField } from './components/InputSection';
 import { analyzeFeasibility } from './services/geminiService';
@@ -13,7 +13,8 @@ const CashFlowChart = React.lazy(() => import('./components/ChartSection').then(
 const SettingsSection = React.lazy(() => import('./components/SettingsSection').then(module => ({ default: module.SettingsSection })));
 
 const App: React.FC = () => {
-  const [data, setData] = useState<ProjectData>(INITIAL_DATA);
+  // Deep copy initial data to avoid reference issues
+  const [data, setData] = useState<ProjectData>(JSON.parse(JSON.stringify(INITIAL_DATA)));
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -22,12 +23,15 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'quick' | 'inputs' | 'dashboard' | 'history' | 'settings'>('quick');
   const [isDbConnected, setIsDbConnected] = useState(false);
   
+  // Controle de Visualização do Dashboard
+  const [dashboardSelectionMode, setDashboardSelectionMode] = useState(true);
+  
   // Estado para cenário de estresse na Viabilidade Rápida
   const [stressTest, setStressTest] = useState(false);
 
   useEffect(() => {
     checkDbConnection();
-    if (activeTab === 'history') {
+    if (activeTab === 'history' || activeTab === 'dashboard') {
         loadProjects();
     }
   }, [activeTab]);
@@ -42,13 +46,14 @@ const App: React.FC = () => {
       setIsLoadingProjects(true);
       const list = await fetchProjects();
       const mergedList = list.map(p => ({
-        ...INITIAL_DATA,
+        ...JSON.parse(JSON.stringify(INITIAL_DATA)), // Ensure all fields exist
         ...p,
         units: p.units || [],
         zoning: { ...INITIAL_DATA.zoning, ...(p.zoning || {}) },
         media: p.media || INITIAL_DATA.media,
         segmentedCosts: p.segmentedCosts || INITIAL_DATA.segmentedCosts,
-        quickFeasibility: p.quickFeasibility || INITIAL_DATA.quickFeasibility
+        quickFeasibility: p.quickFeasibility || INITIAL_DATA.quickFeasibility,
+        financials: p.financials || INITIAL_DATA.financials
       }));
       setProjects(mergedList);
     } catch (e) {
@@ -62,7 +67,8 @@ const App: React.FC = () => {
 
   const handleNewProject = () => {
     if (confirm("Deseja iniciar um novo empreendimento? Os dados não salvos serão perdidos.")) {
-      const newData = { ...INITIAL_DATA, id: undefined, units: [...INITIAL_DATA.units] };
+      // Deep copy to ensure fresh state without ID
+      const newData = JSON.parse(JSON.stringify(INITIAL_DATA));
       setData(newData);
       setAiAnalysis('');
       setActiveTab('quick');
@@ -72,20 +78,39 @@ const App: React.FC = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const projectToSave = { ...data, id: data.id || crypto.randomUUID() };
-      await saveProject(projectToSave);
-      setData(projectToSave);
-      alert("Projeto salvo com sucesso no Banco de Dados!");
+      // Ensure we have an ID for upsert logic, or undefined for new insert (Supabase generates UUID)
+      const projectToSave = { 
+        ...data, 
+        id: data.id // If it has an ID, keep it. If undefined, Supabase handles it.
+      };
+      
+      const savedProject = await saveProject(projectToSave);
+      
+      // Update local state with the saved data (which now definitely has an ID)
+      if (savedProject) {
+        setData(savedProject);
+      }
+      
+      alert("Projeto salvo com sucesso!");
+      // Refresh list in background
+      loadProjects();
     } catch (e: any) {
       console.error(e);
-      const projectToSave = { ...data, id: data.id || crypto.randomUUID() };
-      let localProjects = [];
-      try { localProjects = JSON.parse(localStorage.getItem('calcconstru_projects') || '[]'); } catch {}
-      const newList = [projectToSave, ...localProjects.filter((p: any) => p.id !== projectToSave.id)];
-      localStorage.setItem('calcconstru_projects', JSON.stringify(newList));
-      setProjects(newList);
-      setData(projectToSave);
-      alert("Salvo localmente (Offline ou Erro Supabase).");
+      
+      // Error handling specifically for schema mismatches
+      if (e.message && (e.message.includes('financials') || e.message.includes('column'))) {
+         alert("ERRO AO SALVAR: O banco de dados parece estar desatualizado. Vá na aba 'Configurações' > 'Schema SQL' e atualize sua tabela no Supabase.");
+      } else {
+         // Fallback to local storage
+         const projectToSave = { ...data, id: data.id || crypto.randomUUID() };
+         let localProjects = [];
+         try { localProjects = JSON.parse(localStorage.getItem('calcconstru_projects') || '[]'); } catch {}
+         const newList = [projectToSave, ...localProjects.filter((p: any) => p.id !== projectToSave.id)];
+         localStorage.setItem('calcconstru_projects', JSON.stringify(newList));
+         setProjects(newList);
+         setData(projectToSave);
+         alert("Salvo localmente (Offline ou Erro de Conexão).");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -162,6 +187,16 @@ const App: React.FC = () => {
       ...data,
       detailedCosts: { ...data.detailedCosts, [key]: val }
     });
+  };
+
+  const updateFinancials = (key: keyof FinancialAssumptions, val: number) => {
+      setData({
+          ...data,
+          financials: {
+              ...(data.financials || INITIAL_DATA.financials),
+              [key]: val
+          }
+      });
   };
 
   // --- Handlers Viabilidade Rápida ---
@@ -286,28 +321,33 @@ const App: React.FC = () => {
 
     // --- CÁLCULO DASHBOARD ANALÍTICO ---
     const totalConstruction = constructionCost + foundationCostFinal;
+    const financials = data.financials || INITIAL_DATA.financials;
     
-    // Estimativas para decomposição (simulando a partir dos totais)
-    const landCommission = data.landValue * 0.05;
-    const landTaxes = data.landValue * 0.04;
-    const landAcquisition = data.landValue - landCommission - landTaxes;
+    // Cálculo detalhado com base nas premissas
+    const landCommission = data.landValue * (financials.landCommissionPct / 100);
+    const landTaxes = data.landValue * (financials.landRegistryPct / 100);
+    const landAcquisition = data.landValue; // Valor principal
+    const landTotalCost = data.landValue + landCommission + landTaxes;
     
-    // Se Viabilidade Rápida estiver ativa, usamos suas taxas se não houverem dados detalhados
-    const taxesRate = data.quickFeasibility?.softCostRate && data.otherCosts === 0 ? 0.04 : 0; 
-    const taxesValue = vgv * (0.0409); // RET Padrão ~4.09%
+    // Impostos s/ Venda (RET)
+    const taxesValue = vgv * (financials.taxesPct / 100);
 
     const totalExpenses = data.marketingCost + data.otherCosts + data.documentationCost;
-    const marketingLaunch = data.marketingCost * 0.6;
-    const marketingMaintenance = data.marketingCost * 0.4;
-    const salesCommission = vgv * 0.04; // Estimativa de 4% comissão geral se não estiver explicito
+    
+    // Split de Marketing
+    const marketingLaunch = data.marketingCost * (financials.marketingSplitLaunch / 100);
+    const marketingMaintenance = data.marketingCost * ((100 - financials.marketingSplitLaunch) / 100);
+    
+    // Comissão de Venda
+    const salesCommission = vgv * (financials.saleCommissionPct / 100);
     
     // Ajuste do resultado final considerando impostos calculados
-    const finalResult = vgv - data.landValue - totalConstruction - totalExpenses - taxesValue - salesCommission;
+    const finalResult = vgv - landTotalCost - totalConstruction - totalExpenses - taxesValue - salesCommission;
 
     const dashboard: DashboardData = {
         synthetic: {
             revenue: vgv,
-            landCost: data.landValue,
+            landCost: landTotalCost,
             constructionCost: totalConstruction,
             expenses: totalExpenses + salesCommission, // Inclui comissão no sintético
             taxes: taxesValue,
@@ -316,7 +356,7 @@ const App: React.FC = () => {
         analytical: {
             revenue: { total: vgv },
             land: { 
-                total: data.landValue, 
+                total: landTotalCost, 
                 acquisition: landAcquisition, 
                 commission: landCommission, 
                 taxes: landTaxes 
@@ -377,6 +417,27 @@ const App: React.FC = () => {
   const formatCurrency = (val: number) => 
     val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
+  // Componente de Barra de Ação Flutuante
+  const ActionBar = () => (
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-2xl z-40 flex justify-center">
+        <div className="max-w-7xl w-full flex justify-between items-center px-4">
+            <button onClick={handleNewProject} className="text-slate-500 font-bold text-sm hover:text-slate-800 transition">
+                + Novo (Limpar)
+            </button>
+            <div className="flex gap-4">
+                 <div className="hidden md:block text-right">
+                     <p className="text-[10px] text-slate-400 font-bold uppercase">Resultado Líquido</p>
+                     <p className={`font-bold ${results.profit > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatCurrency(results.profit)}</p>
+                 </div>
+                 <button onClick={handleSave} disabled={isSaving} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-8 rounded-xl shadow-lg shadow-emerald-200 transition-all transform active:scale-95 disabled:opacity-50 flex items-center gap-2">
+                    {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                 </button>
+            </div>
+        </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-slate-900 text-white py-4 px-6 shadow-xl sticky top-0 z-50">
@@ -395,37 +456,29 @@ const App: React.FC = () => {
           
           <div className="flex items-center gap-3">
              {/* Main Tabs */}
-             <div className="flex bg-slate-800 rounded-lg p-1 mr-2">
+             <div className="flex bg-slate-800 rounded-lg p-1">
                 <button onClick={() => setActiveTab('quick')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'quick' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
                     🚀 Rápida
                 </button>
                 <button onClick={() => setActiveTab('inputs')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'inputs' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
                     🛠️ Detalhada
                 </button>
-                <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
+                <button onClick={() => { setActiveTab('dashboard'); setDashboardSelectionMode(true); }} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
                     📊 Dashboard
                 </button>
                 <button onClick={() => setActiveTab('history')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'history' ? 'bg-slate-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
-                    📚 Histórico
+                    📚 Empreendimentos
                 </button>
              </div>
-
-             <div className="flex items-center gap-2 pl-2 border-l border-slate-700">
-                <button onClick={handleNewProject} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white" title="Novo Projeto">
-                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                </button>
-                <button onClick={handleSave} disabled={isSaving} className="p-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white disabled:opacity-50" title="Salvar">
-                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-                </button>
-                <button onClick={() => setActiveTab('settings')} className={`p-2 rounded-lg transition-colors ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`}>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                </button>
-             </div>
+             
+             <button onClick={() => setActiveTab('settings')} className={`p-2 rounded-lg transition-colors ml-2 ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 md:px-6 pt-8 pb-20">
+      <main className="max-w-7xl mx-auto px-4 md:px-6 pt-8 pb-24">
         
         {activeTab === 'settings' && (
             <div className="max-w-4xl mx-auto">
@@ -435,11 +488,20 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* ... (Histórico omitido para brevidade, sem alterações) ... */}
+        {/* --- LISTA DE EMPREENDIMENTOS (ANTIGO HISTÓRICO) --- */}
         {activeTab === 'history' && (
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 animate-fadeIn">
-             <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">Histórico de Empreendimentos</h2>
+             <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">Meus Empreendimentos</h2>
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 
+                 {/* CARD: NOVO PROJETO */}
+                 <div onClick={handleNewProject} className="cursor-pointer bg-white border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 p-6 rounded-2xl transition-all flex flex-col items-center justify-center min-h-[160px] group">
+                    <div className="bg-blue-100 p-3 rounded-full mb-3 group-hover:bg-blue-200 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    </div>
+                    <span className="font-bold text-blue-600 group-hover:text-blue-800">Criar Novo Empreendimento</span>
+                 </div>
+
                  {projects.map((p) => {
                    let vgv = 0;
                    if (p.quickFeasibility) {
@@ -465,15 +527,66 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* --- NOVO: DASHBOARD ANALÍTICO --- */}
+        {/* --- DASHBOARD ANALÍTICO --- */}
         {activeTab === 'dashboard' && (
             <div className="max-w-6xl mx-auto">
-               <DashboardSection data={results.dashboard} />
+               {dashboardSelectionMode ? (
+                   <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 animate-fadeIn">
+                      <div className="text-center mb-10">
+                        <h2 className="text-2xl font-bold mb-2">Selecione um Empreendimento</h2>
+                        <p className="text-slate-500">Escolha um projeto para visualizar os indicadores de desempenho e custos detalhados.</p>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {/* Botão para Novo Projeto no Dashboard também */}
+                        <div onClick={handleNewProject} className="cursor-pointer bg-white border-2 border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 p-6 rounded-2xl transition-all flex flex-col items-center justify-center min-h-[140px] group">
+                            <span className="font-bold text-slate-400 group-hover:text-indigo-600">+ Novo Projeto</span>
+                        </div>
+
+                        {projects.map((p) => {
+                            let vgv = 0;
+                            if (p.quickFeasibility) {
+                                const built = p.quickFeasibility.landArea * p.quickFeasibility.constructionPotential;
+                                const priv = built * (p.quickFeasibility.efficiency / 100);
+                                vgv = priv * p.quickFeasibility.salePricePerSqm;
+                            } else if (p.units && p.units.length > 0) {
+                                vgv = p.units.reduce((acc: any, u: any) => acc + (u.quantity * u.area * u.pricePerSqm), 0);
+                            } else {
+                                vgv = p.unitPrice * p.totalUnits;
+                            }
+                            return (
+                                <div key={p.id} onClick={() => { setData(p); setDashboardSelectionMode(false); }} className="cursor-pointer bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 p-6 rounded-2xl transition-all shadow-sm hover:shadow-md">
+                                    <h3 className="font-bold text-slate-800 mb-1">{p.name}</h3>
+                                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-3">{p.type} • {p.standard}</p>
+                                    <div className="flex justify-between items-center border-t border-slate-200 pt-3">
+                                        <span className="text-xs font-bold text-slate-400">VGV Estimado</span>
+                                        <span className="text-sm font-bold text-indigo-700">{formatCurrency(vgv)}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                      </div>
+                   </div>
+               ) : (
+                   <div className="space-y-6">
+                       <div className="flex items-center justify-between">
+                            <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                                <span className="bg-indigo-600 text-white text-xs px-2 py-1 rounded">DASHBOARD</span> 
+                                {data.name}
+                            </h2>
+                            <button onClick={() => setDashboardSelectionMode(true)} className="text-sm text-slate-500 hover:text-indigo-600 font-medium flex items-center gap-1">
+                                ← Trocar Empreendimento
+                            </button>
+                       </div>
+                       <DashboardSection data={results.dashboard} />
+                   </div>
+               )}
             </div>
         )}
         
         {/* --- VIABILIDADE RÁPIDA --- */}
         {activeTab === 'quick' && (
+           <>
            <div className="animate-fadeIn space-y-8">
                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <InputField label="Nome do Empreendimento" type="text" value={data.name} onChange={(v) => setData({...data, name: v})} />
@@ -598,10 +711,13 @@ const App: React.FC = () => {
                    </div>
                </div>
            </div>
+           <ActionBar />
+           </>
         )}
 
         {/* --- VIABILIDADE DETALHADA --- */}
         {activeTab === 'inputs' && (
+          <>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
             
             <div className="lg:col-span-5 space-y-6">
@@ -656,6 +772,39 @@ const App: React.FC = () => {
                         <InputField label="Cobertura" value={data.zoning?.penthouseFloors || 0} onChange={(v) => setData({...data, zoning: {...data.zoning, penthouseFloors: v}})} />
                     </div>
                 </div>
+              </section>
+
+               {/* Mídia e Arquivos */}
+               <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-orange-400 rounded-full"></span>Mídia e Documentos</h2>
+                <div className="space-y-4">
+                   <InputField label="Link da Localização (Google Maps)" type="text" value={data.media?.locationLink || ''} onChange={(v) => setData({...data, media: {...data.media, locationLink: v}})} />
+                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <p className="text-xs font-bold text-slate-500 mb-2">GALERIA DE IMAGENS (URLs)</p>
+                      <div className="space-y-2">
+                         {data.media?.imageUrls?.map((url, idx) => (
+                             <div key={idx} className="flex gap-2"><input className="flex-1 text-xs p-1 border rounded bg-white" value={url} readOnly /><button onClick={() => { const newUrls = data.media.imageUrls.filter((_, i) => i !== idx); setData({...data, media: {...data.media, imageUrls: newUrls}}); }} className="text-red-500 font-bold">×</button></div>
+                         ))}
+                         <div className="flex gap-2"><input id="newImgUrl" placeholder="https://..." className="flex-1 text-xs p-1.5 border rounded" /><button onClick={() => { const el = document.getElementById('newImgUrl') as HTMLInputElement; if(el.value) { setData({...data, media: {...data.media, imageUrls: [...(data.media.imageUrls || []), el.value]}}); el.value = ''; } }} className="bg-blue-600 text-white text-xs px-2 rounded">Adicionar</button></div>
+                      </div>
+                   </div>
+                </div>
+              </section>
+            </div>
+
+            {/* --- Right Column --- */}
+            <div className="lg:col-span-7 space-y-6">
+              
+              {/* Seção Financeira Avançada (NOVA) */}
+              <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                  <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-red-500 rounded-full"></span>Premissas Financeiras & Taxas</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <InputField label="% Comissão Compra (Terr.)" value={data.financials?.landCommissionPct || 0} onChange={(v) => updateFinancials('landCommissionPct', v)} />
+                      <InputField label="% ITBI e Registro (Terr.)" value={data.financials?.landRegistryPct || 0} onChange={(v) => updateFinancials('landRegistryPct', v)} />
+                      <InputField label="% Impostos Venda (RET)" value={data.financials?.taxesPct || 0} step="0.01" onChange={(v) => updateFinancials('taxesPct', v)} />
+                      <InputField label="% Comissão Venda" value={data.financials?.saleCommissionPct || 0} onChange={(v) => updateFinancials('saleCommissionPct', v)} />
+                      <InputField label="% Marketing no Lançamento" value={data.financials?.marketingSplitLaunch || 0} onChange={(v) => updateFinancials('marketingSplitLaunch', v)} />
+                  </div>
               </section>
 
               {/* Custos da Obra (Com opção de CUB Detalhado) */}
@@ -762,36 +911,6 @@ const App: React.FC = () => {
                 </div>
               </section>
 
-               {/* Mídia e Arquivos */}
-               <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-orange-400 rounded-full"></span>Mídia e Documentos</h2>
-                <div className="space-y-4">
-                   <InputField label="Link da Localização (Google Maps)" type="text" value={data.media?.locationLink || ''} onChange={(v) => setData({...data, media: {...data.media, locationLink: v}})} />
-                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <p className="text-xs font-bold text-slate-500 mb-2">GALERIA DE IMAGENS (URLs)</p>
-                      <div className="space-y-2">
-                         {data.media?.imageUrls?.map((url, idx) => (
-                             <div key={idx} className="flex gap-2"><input className="flex-1 text-xs p-1 border rounded bg-white" value={url} readOnly /><button onClick={() => { const newUrls = data.media.imageUrls.filter((_, i) => i !== idx); setData({...data, media: {...data.media, imageUrls: newUrls}}); }} className="text-red-500 font-bold">×</button></div>
-                         ))}
-                         <div className="flex gap-2"><input id="newImgUrl" placeholder="https://..." className="flex-1 text-xs p-1.5 border rounded" /><button onClick={() => { const el = document.getElementById('newImgUrl') as HTMLInputElement; if(el.value) { setData({...data, media: {...data.media, imageUrls: [...(data.media.imageUrls || []), el.value]}}); el.value = ''; } }} className="bg-blue-600 text-white text-xs px-2 rounded">Adicionar</button></div>
-                      </div>
-                   </div>
-                </div>
-              </section>
-
-              {/* Corretor */}
-              <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-purple-600 rounded-full"></span>Corretor</h2>
-                <div className="space-y-4">
-                  <InputField label="Nome" type="text" value={data.brokerName || ''} onChange={(v) => setData({...data, brokerName: v})} />
-                  <InputField label="Telefone" type="text" value={data.brokerPhone || ''} onChange={(v) => setData({...data, brokerPhone: v})} />
-                  <textarea className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm h-20 outline-none focus:ring-2 focus:ring-blue-500" value={data.observations || ''} onChange={(e) => setData({...data, observations: e.target.value})} placeholder="Observações..." />
-                </div>
-              </section>
-            </div>
-
-            {/* --- Right Column --- */}
-            <div className="lg:col-span-7 space-y-6">
               <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-emerald-600 rounded-full"></span>Mix de Apartamentos</h2>
@@ -858,6 +977,8 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
+          <ActionBar />
+          </>
         )}
       </main>
     </div>
