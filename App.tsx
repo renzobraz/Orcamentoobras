@@ -67,49 +67,68 @@ const App: React.FC = () => {
 
   const handleNewProject = () => {
     if (confirm("Deseja iniciar um novo empreendimento? Os dados não salvos serão perdidos.")) {
-      // Deep copy to ensure fresh state without ID
+      // 1. Cria cópia limpa
       const newData = JSON.parse(JSON.stringify(INITIAL_DATA));
+      
+      // 2. Garante que NÃO TEM ID (para o Supabase criar um novo)
+      delete newData.id;
+      
+      // 3. Atualiza estado
       setData(newData);
       setAiAnalysis('');
+      
+      // 4. Força ida para a aba de edição
       setActiveTab('quick');
+      
+      // 5. Scroll para o topo
+      window.scrollTo(0, 0);
     }
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Ensure we have an ID for upsert logic, or undefined for new insert (Supabase generates UUID)
-      const projectToSave = { 
-        ...data, 
-        id: data.id // If it has an ID, keep it. If undefined, Supabase handles it.
-      };
+      // Clona e prepara o objeto para salvar
+      const projectToSave = { ...data };
+      
+      // Se tiver ID vazio string, remove para evitar erro
+      if (!projectToSave.id) {
+          delete projectToSave.id;
+      }
+      
+      console.log("Tentando salvar:", projectToSave);
       
       const savedProject = await saveProject(projectToSave);
       
-      // Update local state with the saved data (which now definitely has an ID)
+      // Atualiza o estado local com o objeto retornado (que agora tem ID se for novo)
       if (savedProject) {
         setData(savedProject);
+        alert(`Sucesso! Projeto "${savedProject.name}" salvo.`);
+      } else {
+        alert("Projeto salvo, mas sem confirmação do banco.");
       }
       
-      alert("Projeto salvo com sucesso!");
-      // Refresh list in background
+      // Atualiza a lista em background
       loadProjects();
     } catch (e: any) {
-      console.error(e);
+      console.error("Erro no handleSave:", e);
       
-      // Error handling specifically for schema mismatches
       if (e.message && (e.message.includes('financials') || e.message.includes('column'))) {
-         alert("ERRO AO SALVAR: O banco de dados parece estar desatualizado. Vá na aba 'Configurações' > 'Schema SQL' e atualize sua tabela no Supabase.");
+         alert("ERRO DE BANCO DE DADOS: Faltam colunas na tabela. Vá em 'Configurações' e rode o Script SQL de Correção.");
       } else {
-         // Fallback to local storage
-         const projectToSave = { ...data, id: data.id || crypto.randomUUID() };
+         // Fallback LocalStorage
+         const newId = data.id || crypto.randomUUID();
+         const projectToSave = { ...data, id: newId };
+         
          let localProjects = [];
          try { localProjects = JSON.parse(localStorage.getItem('calcconstru_projects') || '[]'); } catch {}
-         const newList = [projectToSave, ...localProjects.filter((p: any) => p.id !== projectToSave.id)];
+         
+         const newList = [projectToSave, ...localProjects.filter((p: any) => p.id !== newId)];
          localStorage.setItem('calcconstru_projects', JSON.stringify(newList));
+         
          setProjects(newList);
          setData(projectToSave);
-         alert("Salvo localmente (Offline ou Erro de Conexão).");
+         alert("Salvo LOCALMENTE (Erro de conexão ou configuração do Supabase).");
       }
     } finally {
       setIsSaving(false);

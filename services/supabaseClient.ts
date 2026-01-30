@@ -45,15 +45,9 @@ export const testConnection = async (): Promise<boolean> => {
   const client = getSupabase();
   if (!client) return false;
   try {
-    // Tenta uma query leve que não precisa de tabela específica, ou checa a tabela projects
     const { error } = await client.from('projects').select('count', { count: 'exact', head: true });
-    // Se o erro for de tabela inexistente (42P01), a conexão funcionou, mas a tabela falta.
-    // Se não houver erro, conexão ok.
     if (!error) return true;
-    // Se o erro for de autenticação, falhou.
     if (error.code === 'PGRST301' || error.message.includes('JWT')) return false;
-    
-    // Consideramos sucesso se conectou, mesmo que a tabela não exista ainda (para permitir setup)
     return true; 
   } catch (e) {
     return false;
@@ -64,12 +58,27 @@ export const saveProject = async (project: ProjectData) => {
   const client = getSupabase();
   if (!client) throw new Error("Supabase não configurado.");
   
+  // SANITIZAÇÃO CRÍTICA:
+  // Se o ID for undefined/null/vazio, REMOVE a chave do objeto.
+  // Isso força o Supabase a gerar um novo UUID.
+  // Se enviarmos { id: undefined, ... }, o Supabase pode rejeitar ou falhar silenciosamente.
+  const payload = { ...project };
+  if (!payload.id) {
+    delete payload.id;
+  }
+
+  // Removemos campos que podem ser gerados automaticamente pelo banco se existirem no tipo mas não na tabela (ex: created_at)
+  // No entanto, 'created_at' está na tabela, então ok.
+
   const { data, error } = await client
     .from('projects')
-    .upsert([project], { onConflict: 'id' })
+    .upsert(payload, { onConflict: 'id' })
     .select();
   
-  if (error) throw error;
+  if (error) {
+    console.error("Erro Supabase:", error);
+    throw error;
+  }
   return data?.[0];
 };
 
