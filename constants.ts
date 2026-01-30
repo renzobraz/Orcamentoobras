@@ -7,6 +7,50 @@ export const DEFAULT_CUB: Record<StandardType, number> = {
   [StandardType.HIGH]: 3120.90
 };
 
+export const SQL_FIX_SCRIPT = `-- SCRIPT DE CORREÇÃO COMPLETO (Rode no Supabase SQL Editor)
+-- Atualizado para incluir TODAS as colunas necessárias
+
+-- 1. Cria a tabela base se não existir
+create table if not exists public.projects (
+  "id" uuid primary key default gen_random_uuid(),
+  "created_at" timestamp with time zone default timezone('utc'::text, now()) not null,
+  "name" text not null,
+  "type" text not null,
+  "standard" text not null
+);
+
+-- 2. Adiciona colunas básicas (ALTER TABLE)
+alter table public.projects add column if not exists "area" numeric default 0;
+alter table public.projects add column if not exists "landArea" numeric default 0; -- CORREÇÃO: Coluna essencial
+alter table public.projects add column if not exists "cubValue" numeric default 0;
+alter table public.projects add column if not exists "landValue" numeric default 0;
+alter table public.projects add column if not exists "foundationCost" numeric default 0;
+alter table public.projects add column if not exists "documentationCost" numeric default 0;
+alter table public.projects add column if not exists "marketingCost" numeric default 0;
+alter table public.projects add column if not exists "otherCosts" numeric default 0;
+alter table public.projects add column if not exists "unitPrice" numeric default 0;
+alter table public.projects add column if not exists "totalUnits" numeric default 0;
+alter table public.projects add column if not exists "brokerName" text;
+alter table public.projects add column if not exists "brokerPhone" text;
+alter table public.projects add column if not exists "observations" text;
+alter table public.projects add column if not exists "useDetailedCosts" boolean default false;
+alter table public.projects add column if not exists "useSegmentedCosts" boolean default false; -- CORREÇÃO: Coluna essencial
+
+-- 3. COLUNAS NOVAS (JSONB)
+alter table public.projects add column if not exists "detailedCosts" jsonb;
+alter table public.projects add column if not exists "units" jsonb;
+alter table public.projects add column if not exists "zoning" jsonb;
+alter table public.projects add column if not exists "media" jsonb;
+alter table public.projects add column if not exists "segmentedCosts" jsonb;
+alter table public.projects add column if not exists "quickFeasibility" jsonb;
+alter table public.projects add column if not exists "financials" jsonb;
+
+-- 4. Permissões
+alter table public.projects enable row level security;
+drop policy if exists "Public Access Policy" on public.projects;
+create policy "Public Access Policy" on public.projects for all using (true) with check (true);
+`;
+
 export const INITIAL_DATA = {
   name: 'Meu Novo Empreendimento',
   type: ProjectType.BUILDING,

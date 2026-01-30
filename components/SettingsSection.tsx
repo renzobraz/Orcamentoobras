@@ -1,47 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { updateSupabaseConfig, getStoredConfig, testConnection, getSupabase } from '../services/supabaseClient';
-
-const SQL_SCHEMA = `-- SCRIPT DE CORREÇÃO (Rode no Supabase SQL Editor)
-
--- 1. Cria a tabela base se não existir
-create table if not exists public.projects (
-  "id" uuid primary key default gen_random_uuid(),
-  "created_at" timestamp with time zone default timezone('utc'::text, now()) not null,
-  "name" text not null,
-  "type" text not null,
-  "standard" text not null
-);
-
--- 2. Adiciona colunas que podem estar faltando (ALTER TABLE)
-alter table public.projects add column if not exists "area" numeric default 0;
-alter table public.projects add column if not exists "cubValue" numeric default 0;
-alter table public.projects add column if not exists "landValue" numeric default 0;
-alter table public.projects add column if not exists "foundationCost" numeric default 0;
-alter table public.projects add column if not exists "documentationCost" numeric default 0;
-alter table public.projects add column if not exists "marketingCost" numeric default 0;
-alter table public.projects add column if not exists "otherCosts" numeric default 0;
-alter table public.projects add column if not exists "unitPrice" numeric default 0;
-alter table public.projects add column if not exists "totalUnits" numeric default 0;
-alter table public.projects add column if not exists "brokerName" text;
-alter table public.projects add column if not exists "brokerPhone" text;
-alter table public.projects add column if not exists "observations" text;
-alter table public.projects add column if not exists "useDetailedCosts" boolean default false;
-
--- 3. COLUNAS NOVAS (JSONB) - O erro de salvamento geralmente é aqui
-alter table public.projects add column if not exists "detailedCosts" jsonb;
-alter table public.projects add column if not exists "units" jsonb;
-alter table public.projects add column if not exists "zoning" jsonb;
-alter table public.projects add column if not exists "media" jsonb;
-alter table public.projects add column if not exists "segmentedCosts" jsonb;
-alter table public.projects add column if not exists "quickFeasibility" jsonb;
-alter table public.projects add column if not exists "financials" jsonb;
-
--- 4. Permissões
-alter table public.projects enable row level security;
-drop policy if exists "Public Access Policy" on public.projects;
-create policy "Public Access Policy" on public.projects for all using (true) with check (true);
-`;
+import { SQL_FIX_SCRIPT } from '../constants';
 
 interface SettingsProps {
   onConfigUpdate?: () => void;
@@ -97,14 +57,13 @@ export const SettingsSection: React.FC<SettingsProps> = ({ onConfigUpdate }) => 
       return;
     }
 
-    // Verifica se consegue selecionar a coluna 'financials' que é nova
     const { error } = await client.from('projects').select('financials').limit(1);
     
     if (!error) {
       setVerificationMsg("✅ Tabela atualizada com sucesso!");
-    } else if (error.code === '42703') { // Undefined column
+    } else if (error.code === '42703') { 
       setVerificationMsg("⚠️ Colunas faltando! Rode o SQL abaixo.");
-    } else if (error.code === '42P01') { // Undefined table
+    } else if (error.code === '42P01') { 
       setVerificationMsg("⚠️ Tabela não existe. Rode o SQL abaixo.");
     } else {
       setVerificationMsg(`❌ Erro: ${error.message}`);
@@ -112,7 +71,7 @@ export const SettingsSection: React.FC<SettingsProps> = ({ onConfigUpdate }) => 
   };
 
   const copySQL = () => {
-    navigator.clipboard.writeText(SQL_SCHEMA);
+    navigator.clipboard.writeText(SQL_FIX_SCRIPT);
     alert("SQL Copiado! Cole no 'SQL Editor' do Supabase.");
   };
 
@@ -157,7 +116,7 @@ export const SettingsSection: React.FC<SettingsProps> = ({ onConfigUpdate }) => 
       </div>
 
       <div className="bg-slate-900 rounded-2xl p-6 overflow-x-auto border border-slate-800">
-         <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap">{SQL_SCHEMA}</pre>
+         <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap">{SQL_FIX_SCRIPT}</pre>
       </div>
     </div>
   );

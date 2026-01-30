@@ -58,28 +58,39 @@ export const saveProject = async (project: ProjectData) => {
   const client = getSupabase();
   if (!client) throw new Error("Supabase não configurado.");
   
-  // SANITIZAÇÃO CRÍTICA:
-  // Se o ID for undefined/null/vazio, REMOVE a chave do objeto.
-  // Isso força o Supabase a gerar um novo UUID.
-  // Se enviarmos { id: undefined, ... }, o Supabase pode rejeitar ou falhar silenciosamente.
   const payload = { ...project };
-  if (!payload.id) {
-    delete payload.id;
-  }
-
-  // Removemos campos que podem ser gerados automaticamente pelo banco se existirem no tipo mas não na tabela (ex: created_at)
-  // No entanto, 'created_at' está na tabela, então ok.
-
-  const { data, error } = await client
-    .from('projects')
-    .upsert(payload, { onConflict: 'id' })
-    .select();
   
-  if (error) {
-    console.error("Erro Supabase:", error);
-    throw error;
+  // Clean payload if necessary
+  // ...
+
+  if (payload.id && payload.id.length > 10) { 
+      // UPDATE: Se existe ID válido, atualiza
+      const { data, error } = await client
+        .from('projects')
+        .update(payload)
+        .eq('id', payload.id)
+        .select();
+      
+      if (error) {
+        console.error("Erro no UPDATE:", error);
+        throw error;
+      }
+      return data?.[0];
+  } else {
+      // INSERT: Se não existe ID, cria novo
+      if (payload.id) delete payload.id; // Garante que não envia ID vazio/invalido
+
+      const { data, error } = await client
+        .from('projects')
+        .insert(payload)
+        .select();
+      
+      if (error) {
+        console.error("Erro no INSERT:", error);
+        throw error;
+      }
+      return data?.[0];
   }
-  return data?.[0];
 };
 
 export const fetchProjects = async () => {

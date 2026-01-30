@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { ProjectData, ProjectType, StandardType, CalculationResults, DetailedCosts, ApartmentUnit, SegmentedCosts, QuickFeasibilityData, DashboardData, FinancialAssumptions } from './types';
-import { DEFAULT_CUB, INITIAL_DATA } from './constants';
+import { DEFAULT_CUB, INITIAL_DATA, SQL_FIX_SCRIPT } from './constants';
 import { InputField } from './components/InputSection';
 import { analyzeFeasibility } from './services/geminiService';
 import { saveProject, fetchProjects, deleteProject, testConnection } from './services/supabaseClient';
@@ -28,6 +28,10 @@ const App: React.FC = () => {
   
   // Estado para cenário de estresse na Viabilidade Rápida
   const [stressTest, setStressTest] = useState(false);
+
+  // Estado para Modais
+  const [showSqlModal, setShowSqlModal] = useState(false);
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
 
   useEffect(() => {
     checkDbConnection();
@@ -65,24 +69,36 @@ const App: React.FC = () => {
     }
   };
 
-  const handleNewProject = () => {
-    if (confirm("Deseja iniciar um novo empreendimento? Os dados não salvos serão perdidos.")) {
-      // 1. Cria cópia limpa
-      const newData = JSON.parse(JSON.stringify(INITIAL_DATA));
-      
-      // 2. Garante que NÃO TEM ID (para o Supabase criar um novo)
-      delete newData.id;
-      
-      // 3. Atualiza estado
-      setData(newData);
-      setAiAnalysis('');
-      
-      // 4. Força ida para a aba de edição
-      setActiveTab('quick');
-      
-      // 5. Scroll para o topo
-      window.scrollTo(0, 0);
+  const handleNewProject = (e?: React.MouseEvent) => {
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
     }
+    // Abre o modal customizado em vez de usar window.confirm
+    setShowNewProjectModal(true);
+  };
+
+  const confirmNewProject = () => {
+    // 1. Cria cópia limpa a partir da constante inicial
+    const newData = JSON.parse(JSON.stringify(INITIAL_DATA));
+    
+    // 2. Garante que NÃO TEM ID (para o Supabase criar um novo no INSERT)
+    delete newData.id;
+    
+    // 3. Reseta TODOS os estados de UI
+    setData(newData);
+    setAiAnalysis('');
+    setStressTest(false);
+    setDashboardSelectionMode(true);
+    
+    // 4. Força ida para a aba de edição
+    setActiveTab('quick');
+    
+    // 5. Scroll para o topo
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // 6. Fecha modal
+    setShowNewProjectModal(false);
   };
 
   const handleSave = async () => {
@@ -91,8 +107,8 @@ const App: React.FC = () => {
       // Clona e prepara o objeto para salvar
       const projectToSave = { ...data };
       
-      // Se tiver ID vazio string, remove para evitar erro
-      if (!projectToSave.id) {
+      // Se ID for vazio ou inválido, remove para forçar INSERT
+      if (!projectToSave.id || projectToSave.id.length < 5) {
           delete projectToSave.id;
       }
       
@@ -113,8 +129,10 @@ const App: React.FC = () => {
     } catch (e: any) {
       console.error("Erro no handleSave:", e);
       
-      if (e.message && (e.message.includes('financials') || e.message.includes('column'))) {
-         alert("ERRO DE BANCO DE DADOS: Faltam colunas na tabela. Vá em 'Configurações' e rode o Script SQL de Correção.");
+      // Verifica erro específico de Coluna Faltando
+      const errorMsg = e.message || '';
+      if (errorMsg.includes('financials') || errorMsg.includes('column') || errorMsg.includes('does not exist')) {
+         setShowSqlModal(true); // Abre modal automaticamente
       } else {
          // Fallback LocalStorage
          const newId = data.id || crypto.randomUUID();
@@ -128,7 +146,7 @@ const App: React.FC = () => {
          
          setProjects(newList);
          setData(projectToSave);
-         alert("Salvo LOCALMENTE (Erro de conexão ou configuração do Supabase).");
+         alert("ERRO DE CONEXÃO: Salvo apenas LOCALMENTE no navegador.");
       }
     } finally {
       setIsSaving(false);
@@ -440,7 +458,11 @@ const App: React.FC = () => {
   const ActionBar = () => (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-2xl z-40 flex justify-center">
         <div className="max-w-7xl w-full flex justify-between items-center px-4">
-            <button onClick={handleNewProject} className="text-slate-500 font-bold text-sm hover:text-slate-800 transition">
+            <button 
+                type="button"
+                onClick={handleNewProject} 
+                className="text-slate-600 font-bold text-sm hover:text-slate-900 hover:bg-slate-100 transition py-2 px-4 rounded border border-transparent hover:border-slate-200"
+            >
                 + Novo (Limpar)
             </button>
             <div className="flex gap-4">
@@ -459,6 +481,50 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      
+      {/* --- MODAIS --- */}
+
+      {/* 1. Modal Novo Projeto */}
+      {showNewProjectModal && (
+        <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-fadeIn">
+                <h2 className="text-xl font-bold text-slate-800 mb-2">Novo Empreendimento</h2>
+                <p className="text-slate-600 mb-6 text-sm">
+                    Deseja iniciar um novo projeto do zero? 
+                    <br/><br/>
+                    <span className="font-bold text-red-500">Atenção:</span> Todos os dados não salvos da tela atual serão perdidos.
+                </p>
+                <div className="flex gap-3 justify-end">
+                    <button onClick={() => setShowNewProjectModal(false)} className="px-4 py-2 text-slate-600 font-bold text-sm hover:bg-slate-100 rounded-lg">Cancelar</button>
+                    <button onClick={confirmNewProject} className="px-6 py-2 bg-blue-600 text-white font-bold text-sm rounded-lg hover:bg-blue-700 shadow-lg">Confirmar e Limpar</button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* 2. Modal de Correção SQL */}
+      {showSqlModal && (
+          <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl animate-fadeIn">
+                  <div className="flex justify-between items-center mb-4">
+                      <h2 className="text-xl font-bold text-red-600 flex items-center gap-2">⚠️ Banco de Dados Desatualizado</h2>
+                      <button onClick={() => setShowSqlModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+                  </div>
+                  <p className="text-slate-600 mb-4 text-sm">
+                      Identificamos que seu banco de dados Supabase não possui as colunas necessárias para salvar este projeto. 
+                      Por favor, copie o código abaixo e execute no <b>SQL Editor</b> do seu painel Supabase.
+                  </p>
+                  <div className="bg-slate-900 rounded-lg p-4 mb-4 overflow-auto max-h-60 border border-slate-700">
+                      <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap">{SQL_FIX_SCRIPT}</pre>
+                  </div>
+                  <div className="flex gap-3 justify-end">
+                      <button onClick={() => setShowSqlModal(false)} className="px-4 py-2 text-slate-600 font-bold text-sm hover:bg-slate-100 rounded-lg">Fechar</button>
+                      <button onClick={() => { navigator.clipboard.writeText(SQL_FIX_SCRIPT); alert('Copiado para a área de transferência!'); }} className="px-6 py-2 bg-blue-600 text-white font-bold text-sm rounded-lg hover:bg-blue-700 shadow-lg">Copiar Código SQL</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <header className="bg-slate-900 text-white py-4 px-6 shadow-xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('quick')}>
@@ -510,10 +576,17 @@ const App: React.FC = () => {
         {/* --- LISTA DE EMPREENDIMENTOS (ANTIGO HISTÓRICO) --- */}
         {activeTab === 'history' && (
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 animate-fadeIn">
-             <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">Meus Empreendimentos</h2>
+             <div className="flex justify-between items-center mb-6">
+                 <h2 className="text-2xl font-bold flex items-center gap-3">Meus Empreendimentos</h2>
+                 {/* Botão Novo explícito no Header da seção */}
+                 <button onClick={handleNewProject} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2 shadow-md transition-all">
+                    <span>+ Novo Empreendimento</span>
+                 </button>
+             </div>
+             
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                  
-                 {/* CARD: NOVO PROJETO */}
+                 {/* CARD: NOVO PROJETO (Mantido para redundância) */}
                  <div onClick={handleNewProject} className="cursor-pointer bg-white border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 p-6 rounded-2xl transition-all flex flex-col items-center justify-center min-h-[160px] group">
                     <div className="bg-blue-100 p-3 rounded-full mb-3 group-hover:bg-blue-200 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>

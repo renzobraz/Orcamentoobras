@@ -13,6 +13,7 @@ create table if not exists public.projects (
 
 -- 2. Adiciona colunas numéricas/texto básicas (caso não existam)
 alter table public.projects add column if not exists "area" numeric default 0;
+alter table public.projects add column if not exists "landArea" numeric default 0; -- CORREÇÃO IMPORTANTE
 alter table public.projects add column if not exists "cubValue" numeric default 0;
 alter table public.projects add column if not exists "landValue" numeric default 0;
 alter table public.projects add column if not exists "foundationCost" numeric default 0;
@@ -25,6 +26,7 @@ alter table public.projects add column if not exists "brokerName" text;
 alter table public.projects add column if not exists "brokerPhone" text;
 alter table public.projects add column if not exists "observations" text;
 alter table public.projects add column if not exists "useDetailedCosts" boolean default false;
+alter table public.projects add column if not exists "useSegmentedCosts" boolean default false; -- CORREÇÃO IMPORTANTE
 
 -- 3. ADICIONA AS COLUNAS JSONB (CRÍTICO PARA O DASHBOARD E VIABILIDADE)
 -- Se o erro de salvamento persistir, é porque uma destas colunas falta.
