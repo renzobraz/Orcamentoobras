@@ -81,6 +81,7 @@ export interface FinancialAssumptions {
   saleCommissionPct: number; // % Comissão de Venda (Stand/Corretor) (ex: 4%)
   taxesPct: number; // % Impostos s/ Venda (RET) (ex: 4.09%)
   marketingSplitLaunch: number; // % do Marketing gasto no Lançamento (ex: 60%)
+  indirectCostsPct: number; // % Custos Indiretos sobre a Obra (ex: 10%)
 }
 
 // --- ESTRUTURA DO DASHBOARD ---
@@ -92,6 +93,7 @@ export interface DashboardData {
     expenses: number;
     taxes: number;
     result: number;
+    margin: number; // % Margem Líquida
   };
   analytical: {
     revenue: { total: number };
@@ -109,6 +111,8 @@ export interface DashboardData {
     utilization: number; // x
     vgvPerSqmPrivate: number;
     costPerSqmBuilt: number;
+    maxLandValue: number; // Teto do Terreno
+    cashExposure: number; // Exposição de Caixa
   };
 }
 

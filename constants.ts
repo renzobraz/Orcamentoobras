@@ -134,7 +134,8 @@ export const INITIAL_DATA = {
     landRegistryPct: 4, // 4%
     saleCommissionPct: 4, // 4%
     taxesPct: 4.09, // RET
-    marketingSplitLaunch: 60 // 60%
+    marketingSplitLaunch: 60, // 60%
+    indirectCostsPct: 10 // 10% (Novo campo padrão)
   },
 
   brokerName: '',

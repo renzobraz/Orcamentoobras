@@ -20,15 +20,14 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
-  const [activeTab, setActiveTab] = useState<'quick' | 'inputs' | 'dashboard' | 'history' | 'settings'>('quick');
+  
+  // Define 'inputs' (Detalhada) como aba padrão
+  const [activeTab, setActiveTab] = useState<'inputs' | 'dashboard' | 'history' | 'settings'>('inputs');
   const [isDbConnected, setIsDbConnected] = useState(false);
   
   // Controle de Visualização do Dashboard
   const [dashboardSelectionMode, setDashboardSelectionMode] = useState(true);
   
-  // Estado para cenário de estresse na Viabilidade Rápida
-  const [stressTest, setStressTest] = useState(false);
-
   // Estado para Modais
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
@@ -57,7 +56,7 @@ const App: React.FC = () => {
         media: p.media || INITIAL_DATA.media,
         segmentedCosts: p.segmentedCosts || INITIAL_DATA.segmentedCosts,
         quickFeasibility: p.quickFeasibility || INITIAL_DATA.quickFeasibility,
-        financials: p.financials || INITIAL_DATA.financials
+        financials: { ...INITIAL_DATA.financials, ...(p.financials || {}) }
       }));
       setProjects(mergedList);
     } catch (e) {
@@ -74,76 +73,49 @@ const App: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
     }
-    // Abre o modal customizado em vez de usar window.confirm
     setShowNewProjectModal(true);
   };
 
   const confirmNewProject = () => {
-    // 1. Cria cópia limpa a partir da constante inicial
     const newData = JSON.parse(JSON.stringify(INITIAL_DATA));
-    
-    // 2. Garante que NÃO TEM ID (para o Supabase criar um novo no INSERT)
     delete newData.id;
-    
-    // 3. Reseta TODOS os estados de UI
     setData(newData);
     setAiAnalysis('');
-    setStressTest(false);
     setDashboardSelectionMode(true);
-    
-    // 4. Força ida para a aba de edição
-    setActiveTab('quick');
-    
-    // 5. Scroll para o topo
+    setActiveTab('inputs');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    // 6. Fecha modal
     setShowNewProjectModal(false);
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Clona e prepara o objeto para salvar
       const projectToSave = { ...data };
-      
-      // Se ID for vazio ou inválido, remove para forçar INSERT
       if (!projectToSave.id || projectToSave.id.length < 5) {
           delete projectToSave.id;
       }
       
-      console.log("Tentando salvar:", projectToSave);
-      
       const savedProject = await saveProject(projectToSave);
       
-      // Atualiza o estado local com o objeto retornado (que agora tem ID se for novo)
       if (savedProject) {
         setData(savedProject);
         alert(`Sucesso! Projeto "${savedProject.name}" salvo.`);
       } else {
         alert("Projeto salvo, mas sem confirmação do banco.");
       }
-      
-      // Atualiza a lista em background
       loadProjects();
     } catch (e: any) {
       console.error("Erro no handleSave:", e);
-      
-      // Verifica erro específico de Coluna Faltando
       const errorMsg = e.message || '';
       if (errorMsg.includes('financials') || errorMsg.includes('column') || errorMsg.includes('does not exist')) {
-         setShowSqlModal(true); // Abre modal automaticamente
+         setShowSqlModal(true); 
       } else {
-         // Fallback LocalStorage
          const newId = data.id || crypto.randomUUID();
          const projectToSave = { ...data, id: newId };
-         
          let localProjects = [];
          try { localProjects = JSON.parse(localStorage.getItem('calcconstru_projects') || '[]'); } catch {}
-         
          const newList = [projectToSave, ...localProjects.filter((p: any) => p.id !== newId)];
          localStorage.setItem('calcconstru_projects', JSON.stringify(newList));
-         
          setProjects(newList);
          setData(projectToSave);
          alert("ERRO DE CONEXÃO: Salvo apenas LOCALMENTE no navegador.");
@@ -175,31 +147,31 @@ const App: React.FC = () => {
       area: 50,
       pricePerSqm: 5000
     };
-    setData({ ...data, units: [...data.units, newUnit] });
+    setData(prev => ({ ...prev, units: [...prev.units, newUnit] }));
   };
 
   const updateUnit = (id: string, field: keyof ApartmentUnit, value: any) => {
-    setData({
-      ...data,
-      units: data.units.map(u => u.id === id ? { ...u, [field]: value } : u)
-    });
+    setData(prev => ({
+      ...prev,
+      units: prev.units.map(u => u.id === id ? { ...u, [field]: value } : u)
+    }));
   };
 
   const updateUnitTotalPrice = (id: string, totalPrice: number) => {
-    setData({
-      ...data,
-      units: data.units.map(u => {
+    setData(prev => ({
+      ...prev,
+      units: prev.units.map(u => {
         if (u.id === id) {
            const area = u.area || 1; 
            return { ...u, pricePerSqm: totalPrice / area };
         }
         return u;
       })
-    });
+    }));
   };
 
   const removeUnit = (id: string) => {
-    setData({ ...data, units: data.units.filter(u => u.id !== id) });
+    setData(prev => ({ ...prev, units: prev.units.filter(u => u.id !== id) }));
   };
 
   const updateSegmentedCost = (
@@ -207,75 +179,53 @@ const App: React.FC = () => {
     field: 'area' | 'pricePerSqm',
     value: number
   ) => {
-    setData({
-        ...data,
+    setData(prev => ({
+        ...prev,
         segmentedCosts: {
-            ...data.segmentedCosts,
+            ...prev.segmentedCosts,
             [type]: {
-                ...data.segmentedCosts[type],
+                ...prev.segmentedCosts[type],
                 [field]: value
             }
         }
-    });
+    }));
   };
 
   const updateDetailedCost = (key: keyof DetailedCosts, val: number) => {
-    setData({
-      ...data,
-      detailedCosts: { ...data.detailedCosts, [key]: val }
-    });
+    setData(prev => ({
+      ...prev,
+      detailedCosts: { ...prev.detailedCosts, [key]: val }
+    }));
   };
 
   const updateFinancials = (key: keyof FinancialAssumptions, val: number) => {
-      setData({
-          ...data,
+      setData(prev => ({
+          ...prev,
           financials: {
-              ...(data.financials || INITIAL_DATA.financials),
+              ...(prev.financials || INITIAL_DATA.financials),
               [key]: val
           }
-      });
+      }));
   };
 
-  // --- Handlers Viabilidade Rápida ---
+  // Helper para atualizar dados de viabilidade rápida (que agora são inputs macro)
   const updateQuick = (key: keyof QuickFeasibilityData, val: number) => {
-    setData({
-        ...data,
+    setData(prev => ({
+        ...prev,
         quickFeasibility: {
-            ...(data.quickFeasibility || INITIAL_DATA.quickFeasibility),
+            ...(prev.quickFeasibility || INITIAL_DATA.quickFeasibility),
             [key]: val
         }
-    });
+    }));
   };
 
-  // --- Cálculos Viabilidade Rápida ---
-  const quickResults = useMemo(() => {
-    const q = data.quickFeasibility || INITIAL_DATA.quickFeasibility;
-    const salesPrice = stressTest ? q.salePricePerSqm * 0.90 : q.salePricePerSqm;
-    const costPrice = stressTest ? q.constructionCostPerSqm * 1.10 : q.constructionCostPerSqm;
-    const builtArea = q.landArea * q.constructionPotential;
-    const privateArea = builtArea * (q.efficiency / 100);
-    const vgv = privateArea * salesPrice;
-    const hardCost = builtArea * costPrice;
-    const softCost = vgv * (q.softCostRate / 100);
-    const totalCost = q.askingPrice + hardCost + softCost;
-    const profit = vgv - totalCost;
-    const margin = vgv > 0 ? (profit / vgv) * 100 : 0;
-    const swapTotalPct = (q.physicalSwap + q.financialSwap) / 100;
-    const initialLandDisbursement = q.askingPrice * (1 - swapTotalPct);
-    const cashExposure = initialLandDisbursement + (hardCost * 0.20);
-    const targetProfit = vgv * (q.requiredMargin / 100);
-    const maxLandValue = vgv - hardCost - softCost - targetProfit;
-
-    return { builtArea, privateArea, vgv, hardCost, softCost, totalCost, profit, margin, cashExposure, maxLandValue };
-  }, [data.quickFeasibility, stressTest]);
-
-  // --- Cálculos Principais (Detalhada + Dashboard) ---
+  // --- Cálculos Principais ---
   const results = useMemo<CalculationResults>(() => {
     let constructionCost = 0;
     let foundationCostFinal = 0;
     let currentArea = data.area;
 
-    // Cálculo de Custo
+    // 1. Cálculo de Custo (Obra)
     if (data.useSegmentedCosts) {
        const sc = data.segmentedCosts;
        currentArea = sc.garage.area + sc.leisure.area + sc.standard.area + sc.penthouse.area;
@@ -292,35 +242,83 @@ const App: React.FC = () => {
       constructionCost = data.area * m2Cost;
       foundationCostFinal = data.foundationCost;
     } else {
-      constructionCost = data.area * data.cubValue;
+      // Fallback: Se não houver área definida, tenta usar a do macro
+      if (currentArea === 0 && data.quickFeasibility) {
+          const pot = data.quickFeasibility.constructionPotential || data.zoning.utilizationCoefficient;
+          currentArea = data.landArea * pot;
+      }
+      
+      // Se tiver Custo Macro definido e não tiver CUB
+      const macroCost = data.quickFeasibility?.constructionCostPerSqm || 0;
+      const finalM2Cost = macroCost > 0 ? macroCost : data.cubValue;
+      
+      constructionCost = currentArea * finalM2Cost;
       foundationCostFinal = data.foundationCost;
     }
 
     const permittedArea = data.landArea * data.zoning.utilizationCoefficient;
 
+    // 2. Cálculo de VGV (Híbrido)
     let vgv = 0;
     let totalPrivateArea = 0;
+    let efficiency = 0;
+
     if (data.units && data.units.length > 0) {
+        // Modo Detalhado: Soma das unidades
         vgv = data.units.reduce((acc, unit) => acc + (unit.quantity * unit.area * unit.pricePerSqm), 0);
         totalPrivateArea = data.units.reduce((acc, unit) => acc + (unit.quantity * unit.area), 0);
+        efficiency = currentArea > 0 ? (totalPrivateArea / currentArea) * 100 : 0;
     } else {
-        vgv = data.unitPrice * data.totalUnits;
-        totalPrivateArea = data.area * 0.70; // fallback estimativo
+        // Modo Macro (Fallback): Área Terreno * Potencial * Eficiência * Preço Médio
+        const q = data.quickFeasibility || INITIAL_DATA.quickFeasibility;
+        const potential = q.constructionPotential || data.zoning.utilizationCoefficient;
+        const eff = q.efficiency || 70;
+        const avgPrice = q.salePricePerSqm || 0;
+        
+        const built = data.landArea * potential;
+        totalPrivateArea = built * (eff / 100);
+        vgv = totalPrivateArea * avgPrice;
+        efficiency = eff;
+        
+        // Se a área construída não foi calculada no passo 1 (por estar zero), atualiza aqui para fins de display
+        if (currentArea === 0) currentArea = built;
     }
 
-    const totalCost = constructionCost + data.landValue + foundationCostFinal + data.documentationCost + data.marketingCost + data.otherCosts;
-    const profit = vgv - totalCost;
-    const roi = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+    // 3. Custos Adicionais & Financeiro
+    const financials = data.financials || INITIAL_DATA.financials;
+    const landValue = data.landValue || (data.quickFeasibility?.askingPrice || 0);
 
+    const landCommission = landValue * (financials.landCommissionPct / 100);
+    const landTaxes = landValue * (financials.landRegistryPct / 100);
+    const landTotalCost = landValue + landCommission + landTaxes;
+    
+    // Total Obra
+    const totalConstruction = constructionCost + foundationCostFinal;
+    const indirectConstruction = totalConstruction * ((financials.indirectCostsPct || 0) / 100);
+    const directConstruction = totalConstruction - indirectConstruction;
+
+    const totalCost = totalConstruction + landTotalCost + data.documentationCost + data.marketingCost + data.otherCosts;
+
+    // Impostos e Comissões Venda
+    const taxesValue = vgv * (financials.taxesPct / 100);
+    const salesCommission = vgv * (financials.saleCommissionPct / 100);
+    
+    // 4. Resultados Finais
+    const totalExpenses = data.marketingCost + data.otherCosts + data.documentationCost;
+    const finalResult = vgv - landTotalCost - totalConstruction - totalExpenses - taxesValue - salesCommission;
+    const profit = finalResult;
+    const roi = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+    const margin = vgv > 0 ? (finalResult / vgv) * 100 : 0;
+
+    // Breakdown para Gráfico
     const breakdown = [
-      { category: 'Construção', value: constructionCost, percentage: (constructionCost / totalCost) * 100 },
-      { category: 'Terreno', value: data.landValue, percentage: (data.landValue / totalCost) * 100 },
-      { category: 'Fundação', value: foundationCostFinal, percentage: (foundationCostFinal / totalCost) * 100 },
-      { category: 'Documentação', value: data.documentationCost, percentage: (data.documentationCost / totalCost) * 100 },
-      { category: 'Marketing', value: data.marketingCost, percentage: (data.marketingCost / totalCost) * 100 },
-      { category: 'Outros', value: data.otherCosts, percentage: (data.otherCosts / totalCost) * 100 },
+      { category: 'Construção', value: totalConstruction, percentage: (totalConstruction / totalCost) * 100 },
+      { category: 'Terreno', value: landValue, percentage: (landValue / totalCost) * 100 },
+      { category: 'Impostos/Taxas', value: taxesValue + landTaxes, percentage: ((taxesValue + landTaxes) / totalCost) * 100 },
+      { category: 'Despesas/Mkt', value: totalExpenses + salesCommission, percentage: ((totalExpenses + salesCommission) / totalCost) * 100 },
     ];
 
+    // Estimativa de Prazo
     let timeEstimate = 0;
     if (data.type === ProjectType.HOUSE) {
         timeEstimate = 5 + (currentArea / 40);
@@ -337,7 +335,8 @@ const App: React.FC = () => {
     }
     const constructionTime = Math.max(3, Math.ceil(timeEstimate));
 
-    const costToDistribute = constructionCost + foundationCostFinal;
+    // Fluxo de Caixa Simplificado
+    const costToDistribute = totalConstruction;
     const cashFlow = [];
     const initialPhase = Math.ceil(constructionTime * 0.2);
     const middlePhase = Math.ceil(constructionTime * 0.6);
@@ -351,57 +350,41 @@ const App: React.FC = () => {
         if (i <= initialPhase) val = initialCostPerMonth;
         else if (i <= initialPhase + middlePhase) val = middleCostPerMonth;
         else val = finalCostPerMonth;
-        if (i === 1) val += data.landValue + data.documentationCost + data.otherCosts;
+        if (i === 1) val += landTotalCost + data.documentationCost + data.otherCosts;
         val += (data.marketingCost / constructionTime);
         cashFlow.push({ month: i, value: val });
     }
 
-    // --- CÁLCULO DASHBOARD ANALÍTICO ---
-    const totalConstruction = constructionCost + foundationCostFinal;
-    const financials = data.financials || INITIAL_DATA.financials;
-    
-    // Cálculo detalhado com base nas premissas
-    const landCommission = data.landValue * (financials.landCommissionPct / 100);
-    const landTaxes = data.landValue * (financials.landRegistryPct / 100);
-    const landAcquisition = data.landValue; // Valor principal
-    const landTotalCost = data.landValue + landCommission + landTaxes;
-    
-    // Impostos s/ Venda (RET)
-    const taxesValue = vgv * (financials.taxesPct / 100);
-
-    const totalExpenses = data.marketingCost + data.otherCosts + data.documentationCost;
-    
-    // Split de Marketing
+    // Splits de Marketing
     const marketingLaunch = data.marketingCost * (financials.marketingSplitLaunch / 100);
     const marketingMaintenance = data.marketingCost * ((100 - financials.marketingSplitLaunch) / 100);
-    
-    // Comissão de Venda
-    const salesCommission = vgv * (financials.saleCommissionPct / 100);
-    
-    // Ajuste do resultado final considerando impostos calculados
-    const finalResult = vgv - landTotalCost - totalConstruction - totalExpenses - taxesValue - salesCommission;
+
+    // KPI Avançados
+    const cashExposure = landTotalCost + (totalConstruction * 0.2);
+    const maxLandValue = vgv * 0.85 - totalConstruction - totalExpenses - taxesValue - salesCommission;
 
     const dashboard: DashboardData = {
         synthetic: {
             revenue: vgv,
             landCost: landTotalCost,
             constructionCost: totalConstruction,
-            expenses: totalExpenses + salesCommission, // Inclui comissão no sintético
+            expenses: totalExpenses + salesCommission,
             taxes: taxesValue,
-            result: finalResult
+            result: finalResult,
+            margin: margin
         },
         analytical: {
             revenue: { total: vgv },
             land: { 
                 total: landTotalCost, 
-                acquisition: landAcquisition, 
+                acquisition: landValue, 
                 commission: landCommission, 
                 taxes: landTaxes 
             },
             construction: { 
                 total: totalConstruction, 
-                direct: totalConstruction * 0.9, 
-                indirect: totalConstruction * 0.1 
+                direct: directConstruction, 
+                indirect: indirectConstruction 
             },
             expenses: { 
                 total: totalExpenses + salesCommission, 
@@ -416,11 +399,13 @@ const App: React.FC = () => {
             landArea: data.landArea,
             builtArea: currentArea,
             privateArea: totalPrivateArea,
-            efficiency: currentArea > 0 ? (totalPrivateArea / currentArea) * 100 : 0,
+            efficiency: efficiency,
             occupancy: data.zoning.occupancyRate,
             utilization: data.landArea > 0 ? currentArea / data.landArea : 0,
             vgvPerSqmPrivate: totalPrivateArea > 0 ? vgv / totalPrivateArea : 0,
-            costPerSqmBuilt: currentArea > 0 ? totalConstruction / currentArea : 0
+            costPerSqmBuilt: currentArea > 0 ? totalConstruction / currentArea : 0,
+            maxLandValue: maxLandValue,
+            cashExposure: cashExposure
         }
     };
 
@@ -483,8 +468,6 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50">
       
       {/* --- MODAIS --- */}
-
-      {/* 1. Modal Novo Projeto */}
       {showNewProjectModal && (
         <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-fadeIn">
@@ -502,7 +485,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* 2. Modal de Correção SQL */}
       {showSqlModal && (
           <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl animate-fadeIn">
@@ -527,7 +509,7 @@ const App: React.FC = () => {
 
       <header className="bg-slate-900 text-white py-4 px-6 shadow-xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('quick')}>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('inputs')}>
             <div className="bg-blue-600 p-2 rounded-lg">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -542,11 +524,8 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
              {/* Main Tabs */}
              <div className="flex bg-slate-800 rounded-lg p-1">
-                <button onClick={() => setActiveTab('quick')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'quick' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
-                    🚀 Rápida
-                </button>
                 <button onClick={() => setActiveTab('inputs')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'inputs' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
-                    🛠️ Detalhada
+                    🛠️ Edição
                 </button>
                 <button onClick={() => { setActiveTab('dashboard'); setDashboardSelectionMode(true); }} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
                     📊 Dashboard
@@ -578,15 +557,12 @@ const App: React.FC = () => {
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 animate-fadeIn">
              <div className="flex justify-between items-center mb-6">
                  <h2 className="text-2xl font-bold flex items-center gap-3">Meus Empreendimentos</h2>
-                 {/* Botão Novo explícito no Header da seção */}
                  <button onClick={handleNewProject} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2 shadow-md transition-all">
                     <span>+ Novo Empreendimento</span>
                  </button>
              </div>
              
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                 
-                 {/* CARD: NOVO PROJETO (Mantido para redundância) */}
                  <div onClick={handleNewProject} className="cursor-pointer bg-white border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 p-6 rounded-2xl transition-all flex flex-col items-center justify-center min-h-[160px] group">
                     <div className="bg-blue-100 p-3 rounded-full mb-3 group-hover:bg-blue-200 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -596,22 +572,21 @@ const App: React.FC = () => {
 
                  {projects.map((p) => {
                    let vgv = 0;
-                   if (p.quickFeasibility) {
-                       const built = p.quickFeasibility.landArea * p.quickFeasibility.constructionPotential;
+                   // Logic for display VGV
+                   if (p.units && p.units.length > 0) {
+                      vgv = p.units.reduce((acc: any, u: any) => acc + (u.quantity * u.area * u.pricePerSqm), 0);
+                   } else if (p.quickFeasibility) {
+                       const built = p.quickFeasibility.landArea * (p.quickFeasibility.constructionPotential || p.zoning?.utilizationCoefficient || 1);
                        const priv = built * (p.quickFeasibility.efficiency / 100);
                        vgv = priv * p.quickFeasibility.salePricePerSqm;
-                   } else if (p.units && p.units.length > 0) {
-                      vgv = p.units.reduce((acc: any, u: any) => acc + (u.quantity * u.area * u.pricePerSqm), 0);
-                   } else {
-                      vgv = p.unitPrice * p.totalUnits;
                    }
                    return (
-                     <div key={p.id} onClick={() => { setData(p); setActiveTab(p.quickFeasibility ? 'quick' : 'inputs'); }} className="group cursor-pointer bg-slate-50 hover:bg-white p-5 rounded-2xl border border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all relative overflow-hidden">
+                     <div key={p.id} onClick={() => { setData(p); setActiveTab('inputs'); }} className="group cursor-pointer bg-slate-50 hover:bg-white p-5 rounded-2xl border border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all relative overflow-hidden">
                        <div className="absolute top-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity z-10"><button onClick={(e) => handleDelete(p.id!, e)} className="text-red-500 hover:text-red-700 font-bold px-2">✕</button></div>
                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{p.type} • {p.standard}</span>
                        <h3 className="font-bold text-slate-900 text-lg mb-2 truncate pr-6">{p.name}</h3>
                        <p className="text-emerald-600 font-bold">{formatCurrency(vgv)}</p>
-                       <p className="text-xs text-slate-500 mt-1">{p.quickFeasibility ? 'Viabilidade Rápida' : 'Viabilidade Detalhada'}</p>
+                       <p className="text-xs text-slate-500 mt-1">{p.units && p.units.length > 0 ? 'Viabilidade Detalhada' : 'Viabilidade Macro'}</p>
                      </div>
                    );
                  })}
@@ -630,21 +605,18 @@ const App: React.FC = () => {
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {/* Botão para Novo Projeto no Dashboard também */}
                         <div onClick={handleNewProject} className="cursor-pointer bg-white border-2 border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 p-6 rounded-2xl transition-all flex flex-col items-center justify-center min-h-[140px] group">
                             <span className="font-bold text-slate-400 group-hover:text-indigo-600">+ Novo Projeto</span>
                         </div>
 
                         {projects.map((p) => {
                             let vgv = 0;
-                            if (p.quickFeasibility) {
-                                const built = p.quickFeasibility.landArea * p.quickFeasibility.constructionPotential;
+                            if (p.units && p.units.length > 0) {
+                                vgv = p.units.reduce((acc: any, u: any) => acc + (u.quantity * u.area * u.pricePerSqm), 0);
+                            } else if (p.quickFeasibility) {
+                                const built = p.quickFeasibility.landArea * (p.quickFeasibility.constructionPotential || p.zoning?.utilizationCoefficient || 1);
                                 const priv = built * (p.quickFeasibility.efficiency / 100);
                                 vgv = priv * p.quickFeasibility.salePricePerSqm;
-                            } else if (p.units && p.units.length > 0) {
-                                vgv = p.units.reduce((acc: any, u: any) => acc + (u.quantity * u.area * u.pricePerSqm), 0);
-                            } else {
-                                vgv = p.unitPrice * p.totalUnits;
                             }
                             return (
                                 <div key={p.id} onClick={() => { setData(p); setDashboardSelectionMode(false); }} className="cursor-pointer bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 p-6 rounded-2xl transition-all shadow-sm hover:shadow-md">
@@ -675,139 +647,8 @@ const App: React.FC = () => {
                )}
             </div>
         )}
-        
-        {/* --- VIABILIDADE RÁPIDA --- */}
-        {activeTab === 'quick' && (
-           <>
-           <div className="animate-fadeIn space-y-8">
-               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <InputField label="Nome do Empreendimento" type="text" value={data.name} onChange={(v) => setData({...data, name: v})} />
-               </div>
 
-               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                   {/* Inputs Esquerda */}
-                   <div className="space-y-6">
-                       <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                           <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-orange-500 rounded-full"></span>Premissas do Terreno</h2>
-                           <div className="grid grid-cols-2 gap-4">
-                               <InputField label="Área Terreno (m²)" value={data.landArea} onChange={(v) => {setData({...data, landArea: v}); updateQuick('landArea', v)}} />
-                               <InputField label="Valor Pedido (R$)" prefix="R$" value={data.quickFeasibility?.askingPrice || data.landValue} onChange={(v) => {updateQuick('askingPrice', v); setData({...data, landValue: v})}} />
-                               <InputField label="% Permuta Física" value={data.quickFeasibility?.physicalSwap || 0} onChange={(v) => updateQuick('physicalSwap', v)} />
-                               <InputField label="% Permuta Financeira" value={data.quickFeasibility?.financialSwap || 0} onChange={(v) => updateQuick('financialSwap', v)} />
-                           </div>
-                       </section>
-
-                       <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                           <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-blue-600 rounded-full"></span>Premissas do Produto</h2>
-                           <div className="grid grid-cols-2 gap-4 mb-4">
-                               <InputField label="Potencial Construtivo (x)" value={data.quickFeasibility?.constructionPotential || 0} step="0.1" onChange={(v) => updateQuick('constructionPotential', v)} />
-                               <InputField label="Eficiência de Projeto (%)" value={data.quickFeasibility?.efficiency || 0} onChange={(v) => updateQuick('efficiency', v)} />
-                           </div>
-                           <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                               <InputField label="Preço Venda (R$/m²)" prefix="R$" value={data.quickFeasibility?.salePricePerSqm || 0} onChange={(v) => updateQuick('salePricePerSqm', v)} />
-                               <InputField label="Custo Obra (R$/m²)" prefix="R$" value={data.quickFeasibility?.constructionCostPerSqm || 0} onChange={(v) => updateQuick('constructionCostPerSqm', v)} />
-                           </div>
-                           <div className="mt-4 flex gap-4 text-xs text-slate-500">
-                               <label className="flex items-center gap-2">
-                                  <span>Margem Alvo (%):</span>
-                                  <input type="number" className="w-12 border rounded px-1" value={data.quickFeasibility?.requiredMargin || 20} onChange={(e) => updateQuick('requiredMargin', parseFloat(e.target.value))} />
-                               </label>
-                               <label className="flex items-center gap-2">
-                                  <span>Despesas (%):</span>
-                                  <input type="number" className="w-12 border rounded px-1" value={data.quickFeasibility?.softCostRate || 10} onChange={(e) => updateQuick('softCostRate', parseFloat(e.target.value))} />
-                               </label>
-                           </div>
-                       </section>
-                   </div>
-
-                   {/* Resultados Direita */}
-                   <div className="space-y-6">
-                       {/* Motor de Cálculo Visual */}
-                       <section className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl relative overflow-hidden">
-                           <div className="flex justify-between items-start z-10 relative">
-                               <div>
-                                   <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">VGV Total (Valor Geral de Vendas)</p>
-                                   <h3 className="text-3xl font-bold text-white mb-1">{formatCurrency(quickResults.vgv)}</h3>
-                                   <p className="text-xs text-slate-500">Área Privativa: {quickResults.privateArea.toLocaleString()} m² ({data.quickFeasibility?.efficiency}%)</p>
-                               </div>
-                               <div className="text-right">
-                                   <div className="bg-slate-800 px-3 py-1 rounded-lg inline-block">
-                                        <p className="text-slate-400 text-[10px] font-bold uppercase">Área Construída Total</p>
-                                        <p className="text-lg font-bold">{quickResults.builtArea.toLocaleString()} m²</p>
-                                   </div>
-                               </div>
-                           </div>
-                           
-                           <div className="grid grid-cols-2 gap-4 mt-6 z-10 relative">
-                               <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
-                                   <p className="text-red-300 text-xs mb-1">Custo Obra (Hard)</p>
-                                   <p className="font-bold">{formatCurrency(quickResults.hardCost)}</p>
-                               </div>
-                               <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
-                                   <p className="text-red-300 text-xs mb-1">Despesas (Soft)</p>
-                                   <p className="font-bold">{formatCurrency(quickResults.softCost)}</p>
-                               </div>
-                           </div>
-
-                           {/* Stress Test Toggle */}
-                           <div className="mt-6 pt-4 border-t border-slate-700 flex justify-between items-center">
-                               <span className="text-xs font-bold uppercase text-slate-400">Cenário Estresse (-10% Venda / +10% Obra)</span>
-                               <button 
-                                  onClick={() => setStressTest(!stressTest)}
-                                  className={`w-12 h-6 rounded-full relative transition-all ${stressTest ? 'bg-red-500' : 'bg-slate-600'}`}
-                               >
-                                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${stressTest ? 'left-7' : 'left-1'}`}></div>
-                               </button>
-                           </div>
-                       </section>
-
-                       {/* Painel de Decisão */}
-                       <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                           <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-slate-800">
-                               <span className="w-1 h-6 bg-emerald-500 rounded-full"></span>
-                               Painel de Decisão
-                           </h2>
-                           
-                           <div className="space-y-6">
-                               {/* Resultado Líquido */}
-                               <div className="flex justify-between items-end border-b border-slate-100 pb-4">
-                                   <div>
-                                       <p className="text-xs text-slate-500 font-bold uppercase mb-1">Resultado Líquido (Lucro)</p>
-                                       <h3 className={`text-2xl font-black ${quickResults.profit > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                                           {formatCurrency(quickResults.profit)}
-                                       </h3>
-                                   </div>
-                                   <div className="text-right">
-                                       <p className="text-xs text-slate-500 font-bold uppercase mb-1">Margem Líquida</p>
-                                       <h3 className={`text-2xl font-bold ${quickResults.margin > (data.quickFeasibility?.requiredMargin || 20) ? 'text-emerald-600' : 'text-amber-500'}`}>
-                                           {quickResults.margin.toFixed(1)}%
-                                       </h3>
-                                   </div>
-                               </div>
-
-                               {/* Indicadores Chave */}
-                               <div className="grid grid-cols-2 gap-4">
-                                   <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
-                                       <p className="text-orange-800 text-xs font-bold uppercase mb-1">Exposição de Caixa (Est.)</p>
-                                       <p className="text-lg font-bold text-orange-900">{formatCurrency(quickResults.cashExposure)}</p>
-                                       <p className="text-[10px] text-orange-700 mt-1">Terreno (Entrada) + 20% Obra</p>
-                                   </div>
-                                   <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                                       <p className="text-blue-800 text-xs font-bold uppercase mb-1">Teto para Terreno</p>
-                                       <p className="text-lg font-bold text-blue-900">{formatCurrency(quickResults.maxLandValue)}</p>
-                                       <p className="text-[10px] text-blue-700 mt-1">Para Margem de {data.quickFeasibility?.requiredMargin}%</p>
-                                   </div>
-                               </div>
-                           </div>
-                       </section>
-                   </div>
-               </div>
-           </div>
-           <ActionBar />
-           </>
-        )}
-
-        {/* --- VIABILIDADE DETALHADA --- */}
+        {/* --- VIABILIDADE DETALHADA (AGORA "EDIÇÃO") --- */}
         {activeTab === 'inputs' && (
           <>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
@@ -817,11 +658,11 @@ const App: React.FC = () => {
               <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-blue-600 rounded-full"></span>Dados do Projeto</h2>
                 <div className="space-y-4">
-                  <InputField label="Nome do Empreendimento" type="text" value={data.name} onChange={(v) => setData({...data, name: v})} />
+                  <InputField label="Nome do Empreendimento" type="text" value={data.name} onChange={(v) => setData(prev => ({...prev, name: v}))} />
                   <div className="grid grid-cols-2 gap-4">
                      <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-semibold text-slate-500 uppercase">Tipo</label>
-                        <select className="bg-white border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" value={data.type} onChange={(e) => setData({...data, type: e.target.value as ProjectType})}>
+                        <select className="bg-white border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" value={data.type} onChange={(e) => setData(prev => ({...prev, type: e.target.value as ProjectType}))}>
                             {Object.values(ProjectType).map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                      </div>
@@ -832,6 +673,8 @@ const App: React.FC = () => {
                         </select>
                      </div>
                   </div>
+                  {/* Eficiência (Migrado da Rápida) */}
+                  <InputField label="Eficiência de Projeto (%)" value={data.quickFeasibility?.efficiency || 70} onChange={(v) => updateQuick('efficiency', v)} />
                 </div>
               </section>
 
@@ -841,27 +684,46 @@ const App: React.FC = () => {
                 
                 {/* Terreno e Altura */}
                 <div className="grid grid-cols-2 gap-4 mb-6">
-                    <InputField label="Área Terreno (m²)" value={data.landArea} onChange={(v) => setData({...data, landArea: v})} />
-                    <InputField label="Altura Máx. (m)" value={data.zoning.maxHeight} onChange={(v) => setData({...data, zoning: {...data.zoning, maxHeight: v}})} />
-                    <div className="col-span-2 bg-teal-50 p-3 rounded-xl border border-teal-100 flex justify-between items-center">
+                    <InputField label="Área Terreno (m²)" value={data.landArea} onChange={(v) => setData(prev => ({...prev, landArea: v}))} />
+                    <InputField label="Valor Terreno (R$)" prefix="R$" value={data.landValue} onChange={(v) => { 
+                        setData(prev => ({
+                            ...prev, 
+                            landValue: v,
+                            quickFeasibility: {
+                                ...(prev.quickFeasibility || INITIAL_DATA.quickFeasibility),
+                                askingPrice: v
+                            }
+                        }));
+                    }} />
+                </div>
+
+                {/* Permutas (Migrado da Rápida) */}
+                <div className="grid grid-cols-2 gap-4 mb-6 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <InputField label="% Permuta Física" value={data.quickFeasibility?.physicalSwap || 0} onChange={(v) => updateQuick('physicalSwap', v)} />
+                    <InputField label="% Permuta Financeira" value={data.quickFeasibility?.financialSwap || 0} onChange={(v) => updateQuick('financialSwap', v)} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                    <InputField label="Altura Máx. (m)" value={data.zoning.maxHeight} onChange={(v) => setData(prev => ({...prev, zoning: {...prev.zoning, maxHeight: v}}))} />
+                    <div className="bg-teal-50 p-3 rounded-xl border border-teal-100 flex flex-col justify-center">
                         <span className="text-xs font-bold text-teal-700 uppercase">Potencial Construtivo</span>
                         <span className="text-lg font-bold text-teal-900">{results.permittedArea.toLocaleString()} m²</span>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-3 mb-6">
-                    <InputField label="T. Ocupação (%)" value={data.zoning?.occupancyRate || 0} onChange={(v) => setData({...data, zoning: {...data.zoning, occupancyRate: v}})} />
-                    <InputField label="Coef. Aprov." value={data.zoning?.utilizationCoefficient || 0} onChange={(v) => setData({...data, zoning: {...data.zoning, utilizationCoefficient: v}})} step="0.1" />
-                    <InputField label="Afastamento (m)" value={data.zoning?.minSetback || 0} onChange={(v) => setData({...data, zoning: {...data.zoning, minSetback: v}})} />
+                    <InputField label="T. Ocupação (%)" value={data.zoning?.occupancyRate || 0} onChange={(v) => setData(prev => ({...prev, zoning: {...prev.zoning, occupancyRate: v}}))} />
+                    <InputField label="Coef. Aprov." value={data.zoning?.utilizationCoefficient || 0} onChange={(v) => setData(prev => ({...prev, zoning: {...prev.zoning, utilizationCoefficient: v}}))} step="0.1" />
+                    <InputField label="Afastamento (m)" value={data.zoning?.minSetback || 0} onChange={(v) => setData(prev => ({...prev, zoning: {...prev.zoning, minSetback: v}}))} />
                 </div>
 
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <p className="text-xs font-bold text-slate-500 uppercase mb-3">Pavimentos</p>
                     <div className="grid grid-cols-2 gap-3">
-                        <InputField label="Garagem" value={data.zoning?.garageFloors || 0} onChange={(v) => setData({...data, zoning: {...data.zoning, garageFloors: v}})} />
-                        <InputField label="Tipo (Padrão)" value={data.zoning?.standardFloors || 0} onChange={(v) => setData({...data, zoning: {...data.zoning, standardFloors: v}})} />
-                        <InputField label="Lazer/Comum" value={data.zoning?.leisureFloors || 0} onChange={(v) => setData({...data, zoning: {...data.zoning, leisureFloors: v}})} />
-                        <InputField label="Cobertura" value={data.zoning?.penthouseFloors || 0} onChange={(v) => setData({...data, zoning: {...data.zoning, penthouseFloors: v}})} />
+                        <InputField label="Garagem" value={data.zoning?.garageFloors || 0} onChange={(v) => setData(prev => ({...prev, zoning: {...prev.zoning, garageFloors: v}}))} />
+                        <InputField label="Tipo (Padrão)" value={data.zoning?.standardFloors || 0} onChange={(v) => setData(prev => ({...prev, zoning: {...prev.zoning, standardFloors: v}}))} />
+                        <InputField label="Lazer/Comum" value={data.zoning?.leisureFloors || 0} onChange={(v) => setData(prev => ({...prev, zoning: {...prev.zoning, leisureFloors: v}}))} />
+                        <InputField label="Cobertura" value={data.zoning?.penthouseFloors || 0} onChange={(v) => setData(prev => ({...prev, zoning: {...prev.zoning, penthouseFloors: v}}))} />
                     </div>
                 </div>
               </section>
@@ -870,14 +732,22 @@ const App: React.FC = () => {
                <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-orange-400 rounded-full"></span>Mídia e Documentos</h2>
                 <div className="space-y-4">
-                   <InputField label="Link da Localização (Google Maps)" type="text" value={data.media?.locationLink || ''} onChange={(v) => setData({...data, media: {...data.media, locationLink: v}})} />
+                   <div className="relative">
+                       <InputField label="Link da Localização (Google Maps)" type="text" value={data.media?.locationLink || ''} onChange={(v) => setData(prev => ({...prev, media: {...prev.media, locationLink: v}}))} />
+                       {data.media?.locationLink && (
+                          <a href={data.media.locationLink} target="_blank" rel="noopener noreferrer" className="absolute top-0 right-0 text-[10px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                              Abrir Link
+                          </a>
+                       )}
+                   </div>
                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                       <p className="text-xs font-bold text-slate-500 mb-2">GALERIA DE IMAGENS (URLs)</p>
                       <div className="space-y-2">
                          {data.media?.imageUrls?.map((url, idx) => (
-                             <div key={idx} className="flex gap-2"><input className="flex-1 text-xs p-1 border rounded bg-white" value={url} readOnly /><button onClick={() => { const newUrls = data.media.imageUrls.filter((_, i) => i !== idx); setData({...data, media: {...data.media, imageUrls: newUrls}}); }} className="text-red-500 font-bold">×</button></div>
+                             <div key={idx} className="flex gap-2"><input className="flex-1 text-xs p-1 border rounded bg-white" value={url} readOnly /><button onClick={() => { const newUrls = data.media.imageUrls.filter((_, i) => i !== idx); setData(prev => ({...prev, media: {...prev.media, imageUrls: newUrls}})); }} className="text-red-500 font-bold">×</button></div>
                          ))}
-                         <div className="flex gap-2"><input id="newImgUrl" placeholder="https://..." className="flex-1 text-xs p-1.5 border rounded" /><button onClick={() => { const el = document.getElementById('newImgUrl') as HTMLInputElement; if(el.value) { setData({...data, media: {...data.media, imageUrls: [...(data.media.imageUrls || []), el.value]}}); el.value = ''; } }} className="bg-blue-600 text-white text-xs px-2 rounded">Adicionar</button></div>
+                         <div className="flex gap-2"><input id="newImgUrl" placeholder="https://..." className="flex-1 text-xs p-1.5 border rounded" /><button onClick={() => { const el = document.getElementById('newImgUrl') as HTMLInputElement; if(el.value) { setData(prev => ({...prev, media: {...prev.media, imageUrls: [...(prev.media.imageUrls || []), el.value]}})); el.value = ''; } }} className="bg-blue-600 text-white text-xs px-2 rounded">Adicionar</button></div>
                       </div>
                    </div>
                 </div>
@@ -887,7 +757,7 @@ const App: React.FC = () => {
             {/* --- Right Column --- */}
             <div className="lg:col-span-7 space-y-6">
               
-              {/* Seção Financeira Avançada (NOVA) */}
+              {/* Seção Financeira Avançada */}
               <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                   <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-red-500 rounded-full"></span>Premissas Financeiras & Taxas</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -896,10 +766,21 @@ const App: React.FC = () => {
                       <InputField label="% Impostos Venda (RET)" value={data.financials?.taxesPct || 0} step="0.01" onChange={(v) => updateFinancials('taxesPct', v)} />
                       <InputField label="% Comissão Venda" value={data.financials?.saleCommissionPct || 0} onChange={(v) => updateFinancials('saleCommissionPct', v)} />
                       <InputField label="% Marketing no Lançamento" value={data.financials?.marketingSplitLaunch || 0} onChange={(v) => updateFinancials('marketingSplitLaunch', v)} />
+                      <InputField label="% Custo Indireto (Obra)" value={data.financials?.indirectCostsPct || 0} onChange={(v) => updateFinancials('indirectCostsPct', v)} />
                   </div>
               </section>
 
-              {/* Custos da Obra (Com opção de CUB Detalhado) */}
+              {/* ESTIMATIVAS MACRO (NOVA SEÇÃO FALLBACK) */}
+              <section className="bg-indigo-50 p-6 rounded-2xl shadow-sm border border-indigo-100">
+                  <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-indigo-900"><span className="w-1 h-6 bg-indigo-600 rounded-full"></span>Estimativas Macro (Referências)</h2>
+                  <p className="text-xs text-indigo-700 mb-4">Estes valores serão usados para cálculo preliminar caso você não cadastre unidades específicas abaixo.</p>
+                  <div className="grid grid-cols-2 gap-4">
+                      <InputField label="Preço Médio Venda (R$/m²)" prefix="R$" value={data.quickFeasibility?.salePricePerSqm || 0} onChange={(v) => updateQuick('salePricePerSqm', v)} />
+                      <InputField label="Custo Obra (R$/m²)" prefix="R$" value={data.quickFeasibility?.constructionCostPerSqm || 0} onChange={(v) => updateQuick('constructionCostPerSqm', v)} />
+                  </div>
+              </section>
+
+              {/* Custos da Obra */}
               <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-indigo-600 rounded-full"></span>Custos da Obra</h2>
@@ -908,7 +789,7 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-slate-400 uppercase">CUB Detalhado</span>
                     <button 
-                      onClick={() => setData({...data, useSegmentedCosts: !data.useSegmentedCosts, useDetailedCosts: false})}
+                      onClick={() => setData(prev => ({...prev, useSegmentedCosts: !prev.useSegmentedCosts, useDetailedCosts: false}))}
                       className={`w-10 h-5 rounded-full relative transition-all ${data.useSegmentedCosts ? 'bg-indigo-600' : 'bg-slate-200'}`}
                     >
                       <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${data.useSegmentedCosts ? 'left-6' : 'left-1'}`}></div>
@@ -985,27 +866,26 @@ const App: React.FC = () => {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                         <InputField label="Área Construída Total (m²)" value={data.area} onChange={(v) => setData({...data, area: v})} />
-                         <InputField label="CUB Médio (R$/m²)" value={data.cubValue} onChange={(v) => setData({...data, cubValue: v})} prefix="R$" step="0.01" />
+                         <InputField label="Área Construída Total (m²)" value={data.area} onChange={(v) => setData(prev => ({...prev, area: v}))} />
+                         <InputField label="CUB Médio (R$/m²)" value={data.cubValue} onChange={(v) => setData(prev => ({...prev, cubValue: v}))} prefix="R$" step="0.01" />
                       </div>
                     )}
                     <div className="mt-4 pt-4 border-t border-slate-100">
-                       <InputField label="Custo Fundação (Total)" value={data.foundationCost} onChange={(v) => setData({...data, foundationCost: v})} prefix="R$" />
+                       <InputField label="Custo Fundação (Total)" value={data.foundationCost} onChange={(v) => setData(prev => ({...prev, foundationCost: v}))} prefix="R$" />
                     </div>
                    </>
                 )}
                 
                 <div className="mt-6 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4">
-                   <InputField label="Valor Terreno" value={data.landValue} onChange={(v) => setData({...data, landValue: v})} prefix="R$" />
-                   <InputField label="Projetos/Doc" value={data.documentationCost} onChange={(v) => setData({...data, documentationCost: v})} prefix="R$" />
-                   <InputField label="Marketing" value={data.marketingCost} onChange={(v) => setData({...data, marketingCost: v})} prefix="R$" />
-                   <InputField label="Outros Custos" value={data.otherCosts} onChange={(v) => setData({...data, otherCosts: v})} prefix="R$" />
+                   <InputField label="Projetos/Doc" value={data.documentationCost} onChange={(v) => setData(prev => ({...prev, documentationCost: v}))} prefix="R$" />
+                   <InputField label="Marketing" value={data.marketingCost} onChange={(v) => setData(prev => ({...prev, marketingCost: v}))} prefix="R$" />
+                   <InputField label="Outros Custos" value={data.otherCosts} onChange={(v) => setData(prev => ({...prev, otherCosts: v}))} prefix="R$" />
                 </div>
               </section>
 
               <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-emerald-600 rounded-full"></span>Mix de Apartamentos</h2>
+                    <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-emerald-600 rounded-full"></span>Mix de Apartamentos (Detalhado)</h2>
                     <button onClick={addUnit} className="text-sm bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-bold hover:bg-emerald-200 transition-colors">+ Adicionar Tipo</button>
                   </div>
                   <div className="overflow-x-auto">

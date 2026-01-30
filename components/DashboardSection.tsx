@@ -47,9 +47,76 @@ export const DashboardSection: React.FC<DashboardProps> = ({ data }) => {
   const vgv = synthetic.revenue;
 
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="space-y-8 animate-fadeIn pb-12">
       
-      {/* 1. Resultado Sintético */}
+      {/* 0. PAINEL DE DECISÃO (MIGRADO DA ABA RÁPIDA) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Motor de Cálculo Visual */}
+           <section className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl relative overflow-hidden">
+               <div className="flex justify-between items-start z-10 relative">
+                   <div>
+                       <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">VGV Total (Valor Geral de Vendas)</p>
+                       <h3 className="text-3xl font-bold text-white mb-1">{formatCurrency(vgv)}</h3>
+                       <p className="text-xs text-slate-500">Área Privativa: {kpis.privateArea.toLocaleString()} m² ({kpis.efficiency.toFixed(0)}% Efic.)</p>
+                   </div>
+                   <div className="text-right">
+                       <div className="bg-slate-800 px-3 py-1 rounded-lg inline-block">
+                            <p className="text-slate-400 text-[10px] font-bold uppercase">Área Construída</p>
+                            <p className="text-lg font-bold">{kpis.builtArea.toLocaleString()} m²</p>
+                       </div>
+                   </div>
+               </div>
+               
+               <div className="grid grid-cols-2 gap-4 mt-6 z-10 relative">
+                   <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                       <p className="text-red-300 text-xs mb-1">Custo Obra (Total)</p>
+                       <p className="font-bold">{formatCurrency(synthetic.constructionCost)}</p>
+                   </div>
+                   <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                       <p className="text-red-300 text-xs mb-1">Despesas & Taxas</p>
+                       <p className="font-bold">{formatCurrency(synthetic.expenses + synthetic.taxes)}</p>
+                   </div>
+               </div>
+           </section>
+
+           {/* Painel de Decisão (Lucro e Margem) */}
+           <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
+               <div>
+                   <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800">
+                       <span className="w-1 h-6 bg-emerald-500 rounded-full"></span>
+                       Painel de Decisão
+                   </h2>
+                   
+                   <div className="flex justify-between items-end border-b border-slate-100 pb-4 mb-4">
+                       <div>
+                           <p className="text-xs text-slate-500 font-bold uppercase mb-1">Resultado Líquido (Lucro)</p>
+                           <h3 className={`text-2xl font-black ${synthetic.result > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                               {formatCurrency(synthetic.result)}
+                           </h3>
+                       </div>
+                       <div className="text-right">
+                           <p className="text-xs text-slate-500 font-bold uppercase mb-1">Margem Líquida</p>
+                           <h3 className={`text-2xl font-bold ${synthetic.margin > 15 ? 'text-emerald-600' : 'text-amber-500'}`}>
+                               {synthetic.margin.toFixed(1)}%
+                           </h3>
+                       </div>
+                   </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-4">
+                   <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
+                       <p className="text-orange-800 text-xs font-bold uppercase mb-1">Exposição (Est.)</p>
+                       <p className="text-lg font-bold text-orange-900">{formatCurrency(kpis.cashExposure)}</p>
+                   </div>
+                   <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                       <p className="text-blue-800 text-xs font-bold uppercase mb-1">Teto Terreno (Est.)</p>
+                       <p className="text-lg font-bold text-blue-900">{formatCurrency(kpis.maxLandValue)}</p>
+                   </div>
+               </div>
+           </section>
+      </div>
+
+      {/* 1. Resultado Sintético (Mantido) */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100">
            <h3 className="font-bold text-lg text-slate-800">Resultado Sintético</h3>
@@ -67,7 +134,7 @@ export const DashboardSection: React.FC<DashboardProps> = ({ data }) => {
         </div>
       </div>
 
-      {/* 2. Resultado Analítico */}
+      {/* 2. Resultado Analítico (Atualizado) */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
            <h3 className="font-bold text-lg text-slate-800">Resultado Analítico</h3>
@@ -105,87 +172,6 @@ export const DashboardSection: React.FC<DashboardProps> = ({ data }) => {
            <span className="font-bold">Resultado do Exercício</span>
            <span className="font-bold text-xl">{formatCurrency(synthetic.result)}</span>
         </div>
-      </div>
-
-      {/* 3. KPIs Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          
-          {/* Premissas */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <h4 className="font-bold text-sm text-slate-800 mb-3 border-b pb-2">Premissas Financeiras</h4>
-              <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">Taxa VP</span>
-                      <span className="font-medium">10,00%</span>
-                  </div>
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">Imposto (Est.)</span>
-                      <span className="font-medium">{(synthetic.taxes / synthetic.revenue * 100).toFixed(2)}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">Permuta</span>
-                      <span className="font-medium">N/A</span>
-                  </div>
-              </div>
-          </div>
-
-          {/* VGV e Obra */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <h4 className="font-bold text-sm text-slate-800 mb-3 border-b pb-2">VGV e Obra</h4>
-              <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">VGV Bruto</span>
-                      <span className="font-medium">{formatCurrency(synthetic.revenue)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">Custo Obra</span>
-                      <span className="font-medium">{formatCurrency(synthetic.constructionCost)}</span>
-                  </div>
-                   <div className="flex justify-between">
-                      <span className="text-slate-500">Custo/m² Priv.</span>
-                      <span className="font-medium">{(synthetic.constructionCost / (kpis.privateArea || 1)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                  </div>
-              </div>
-          </div>
-
-          {/* Áreas */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <h4 className="font-bold text-sm text-slate-800 mb-3 border-b pb-2">Áreas</h4>
-              <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">Área Terreno</span>
-                      <span className="font-medium">{kpis.landArea.toLocaleString()} m²</span>
-                  </div>
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">Área Construída</span>
-                      <span className="font-medium">{kpis.builtArea.toLocaleString()} m²</span>
-                  </div>
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">Área Privativa</span>
-                      <span className="font-medium">{kpis.privateArea.toLocaleString()} m²</span>
-                  </div>
-              </div>
-          </div>
-
-          {/* Coeficientes */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <h4 className="font-bold text-sm text-slate-800 mb-3 border-b pb-2">Coeficientes</h4>
-              <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">Eficiência (Priv/Tot)</span>
-                      <span className="font-medium">{kpis.efficiency.toFixed(0)}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">C.A. (Aprov.)</span>
-                      <span className="font-medium">{kpis.utilization.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                      <span className="text-slate-500">Privativa / Terreno</span>
-                      <span className="font-medium">{(kpis.privateArea / (kpis.landArea || 1)).toFixed(2)}</span>
-                  </div>
-              </div>
-          </div>
-
       </div>
     </div>
   );
