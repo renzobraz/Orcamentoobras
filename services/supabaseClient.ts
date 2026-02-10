@@ -78,7 +78,15 @@ export const createSecondaryUser = async (email: string, password: string) => {
   const config = getStoredConfig();
   if (!config.url || !config.key) throw new Error("Supabase não configurado");
 
-  const tempClient = createClient(config.url, config.key);
+  // IMPORTANTE: Configura persistSession = false para não sobrescrever 
+  // o localStorage do usuário admin logado atualmente.
+  const tempClient = createClient(config.url, config.key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  });
   
   const { data, error } = await tempClient.auth.signUp({
     email,
@@ -95,6 +103,17 @@ export const updatePassword = async (newPassword: string) => {
 
     const { error } = await client.auth.updateUser({ password: newPassword });
     if (error) throw error;
+};
+
+export const deleteUser = async (userId: string) => {
+  const client = getSupabase();
+  if (!client) throw new Error("Supabase não configurado.");
+  
+  // Chama a RPC criada no SQL (Remote Procedure Call)
+  // Isso requer que o script SQL com a função 'delete_user_by_id' tenha sido rodado
+  const { error } = await client.rpc('delete_user_by_id', { user_id: userId });
+  
+  if (error) throw error;
 };
 
 export const signOut = async () => {

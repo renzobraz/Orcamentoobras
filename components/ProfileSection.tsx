@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { updatePassword, fetchProfiles, createSecondaryUser, getSession } from '../services/supabaseClient';
+import { updatePassword, fetchProfiles, createSecondaryUser, deleteUser, getSession } from '../services/supabaseClient';
 import { SettingsSection } from './SettingsSection';
 
 export const ProfileSection: React.FC = () => {
@@ -82,10 +82,34 @@ export const ProfileSection: React.FC = () => {
           setNewUserPass('');
           loadData(); // Reload profiles
       } catch (error: any) {
-          alert("Erro ao criar usuário: " + error.message);
+          console.error("Erro criação user:", error);
+          const errorMsg = (error.message || '').toLowerCase();
+          
+          if (errorMsg.includes('rate limit') || error.status === 429 || errorMsg.includes('sending confirmation') || errorMsg.includes('email')) {
+              alert("⚠️ ERRO DE ENVIO DE EMAIL (SUPABASE)\n\nO Supabase falhou ao tentar enviar o email de confirmação. Isso ocorre frequentemente no plano gratuito.\n\nSOLUÇÃO OBRIGATÓRIA:\n1. Vá no Painel do Supabase > Authentication > Providers > Email.\n2. DESATIVE a opção 'Confirm Email' (Confirmar Email).\n3. Salve lá e tente criar o usuário novamente aqui.");
+          } else {
+              alert("Erro ao criar usuário: " + error.message);
+          }
       } finally {
           setIsAddingUser(false);
       }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if(!confirm("Tem certeza que deseja excluir este usuário? Essa ação não pode ser desfeita.")) return;
+    
+    try {
+        await deleteUser(userId);
+        alert("Usuário excluído com sucesso.");
+        loadData();
+    } catch (error: any) {
+        console.error(error);
+        if (error.message?.includes('function') || error.code === 'PGRST202') {
+             alert("Erro: Função de exclusão não encontrada.\n\nPor favor, vá em 'Configurações de Conexão' abaixo e atualize seu Banco de Dados rodando o Script SQL.");
+        } else {
+             alert("Erro ao excluir: " + error.message);
+        }
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -196,7 +220,7 @@ export const ProfileSection: React.FC = () => {
                                         {!isMe && (
                                             <button 
                                                 className="text-slate-300 hover:text-red-500 transition-colors"
-                                                onClick={() => alert("Para excluir usuários, utilize o painel do Supabase (Authentication > Users) por segurança.")}
+                                                onClick={() => handleDeleteUser(profile.id)}
                                                 title="Excluir Usuário"
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -234,7 +258,12 @@ export const ProfileSection: React.FC = () => {
       {showAddModal && (
         <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fadeIn">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Adicionar Administrador</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">Adicionar Administrador</h3>
+                <div className="bg-amber-50 border border-amber-100 p-3 rounded-lg mb-4">
+                   <p className="text-[10px] text-amber-800 font-medium leading-relaxed">
+                     ⚠️ Para evitar erros de limite ou a necessidade de verificação de email, certifique-se de que a opção <b>"Confirm Email"</b> esteja DESATIVADA no painel do Supabase.
+                   </p>
+                </div>
                 <form onSubmit={handleAddUser} className="space-y-4">
                     <div>
                         <label className="block text-xs font-bold text-slate-500 mb-1">Email</label>

@@ -91,12 +91,21 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- BACKFILL: Insere perfis para usuários que já existem (Importante para seu usuário atual)
+-- BACKFILL: Insere perfis para usuários que já existem
 insert into public.profiles (id, email, role)
 select id, email, 'admin' from auth.users
 where id not in (select id from public.profiles);
 
--- 4. Permissões
+-- 4. FUNÇÃO PARA EXCLUIR USUÁRIOS (RPC)
+-- Necessário para que o admin consiga excluir outros users pelo painel
+create or replace function public.delete_user_by_id(user_id uuid)
+returns void as $$
+begin
+  delete from auth.users where id = user_id;
+end;
+$$ language plpgsql security definer;
+
+-- 5. Permissões
 alter table public.projects enable row level security;
 alter table public.lands enable row level security;
 alter table public.profiles enable row level security;
