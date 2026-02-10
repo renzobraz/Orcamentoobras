@@ -13,6 +13,7 @@ import { Session } from '@supabase/supabase-js';
 const CostBreakdownChart = React.lazy(() => import('./components/ChartSection').then(module => ({ default: module.CostBreakdownChart })));
 const CashFlowChart = React.lazy(() => import('./components/ChartSection').then(module => ({ default: module.CashFlowChart })));
 const SettingsSection = React.lazy(() => import('./components/SettingsSection').then(module => ({ default: module.SettingsSection })));
+const ProfileSection = React.lazy(() => import('./components/ProfileSection').then(module => ({ default: module.ProfileSection })));
 const LandRegistry = React.lazy(() => import('./components/LandRegistry').then(module => ({ default: module.LandRegistry })));
 
 const App: React.FC = () => {
@@ -28,7 +29,7 @@ const App: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'inputs' | 'dashboard' | 'history' | 'lands' | 'settings'>('inputs');
+  const [activeTab, setActiveTab] = useState<'inputs' | 'dashboard' | 'history' | 'lands' | 'profile'>('inputs');
   const [isDbConnected, setIsDbConnected] = useState(false);
   const [dashboardSelectionMode, setDashboardSelectionMode] = useState(true);
   
@@ -408,8 +409,8 @@ const App: React.FC = () => {
              </div>
              
              <div className="flex items-center gap-2 border-l border-slate-700 pl-4 ml-2">
-                 <button onClick={() => setActiveTab('settings')} className={`p-2 rounded-lg transition-colors ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`} title="Configurações">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                 <button onClick={() => setActiveTab('profile')} className={`p-2 rounded-lg transition-colors ${activeTab === 'profile' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`} title="Perfil e Conta">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                  </button>
                  <button onClick={handleLogout} className="text-slate-400 hover:text-white font-bold text-xs p-2 uppercase tracking-wider" title="Sair">
                     Sair
@@ -421,8 +422,8 @@ const App: React.FC = () => {
 
       <main className="max-w-7xl mx-auto px-4 md:px-6 pt-8 pb-24">
         
-        {activeTab === 'settings' && (
-            <div className="max-w-4xl mx-auto"><Suspense fallback={<div className="flex justify-center py-20">Carregando...</div>}><SettingsSection onConfigUpdate={checkDbConnection} /></Suspense></div>
+        {activeTab === 'profile' && (
+            <div className="max-w-6xl mx-auto"><Suspense fallback={<div className="flex justify-center py-20">Carregando Perfil...</div>}><ProfileSection /></Suspense></div>
         )}
 
         {activeTab === 'lands' && (

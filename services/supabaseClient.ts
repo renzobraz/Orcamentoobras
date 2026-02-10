@@ -72,6 +72,31 @@ export const signUp = async (email: string, password: string) => {
   return data;
 };
 
+export const createSecondaryUser = async (email: string, password: string) => {
+  // Truque: Cria uma instância TEMPORÁRIA para não deslogar o usuário atual
+  // ao criar um novo usuário.
+  const config = getStoredConfig();
+  if (!config.url || !config.key) throw new Error("Supabase não configurado");
+
+  const tempClient = createClient(config.url, config.key);
+  
+  const { data, error } = await tempClient.auth.signUp({
+    email,
+    password,
+  });
+
+  if (error) throw error;
+  return data;
+};
+
+export const updatePassword = async (newPassword: string) => {
+    const client = getSupabase();
+    if (!client) throw new Error("Supabase não configurado.");
+
+    const { error } = await client.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+};
+
 export const signOut = async () => {
   const client = getSupabase();
   if (!client) return;
@@ -84,6 +109,19 @@ export const getSession = async () => {
   if (!client) return null;
   const { data } = await client.auth.getSession();
   return data.session;
+};
+
+export const fetchProfiles = async () => {
+    const client = getSupabase();
+    if (!client) return [];
+    
+    // Busca perfis. Requer que a tabela 'profiles' tenha sido criada pelo script SQL
+    const { data, error } = await client.from('profiles').select('*').order('created_at', { ascending: false });
+    if (error) {
+        console.warn("Erro ao buscar perfis (Tabela profiles pode não existir):", error.message);
+        return [];
+    }
+    return data;
 };
 
 // --- DATA OPERATIONS ---

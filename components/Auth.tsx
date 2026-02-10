@@ -1,12 +1,11 @@
 
 import React, { useState } from 'react';
-import { signIn, signUp } from '../services/supabaseClient';
+import { signIn } from '../services/supabaseClient';
 
 export const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -15,18 +14,10 @@ export const Auth: React.FC = () => {
     setMessage(null);
 
     try {
-      if (isSignUp) {
-        const { user } = await signUp(email, password);
-        if (user) {
-           setMessage({ text: 'Cadastro realizado! Verifique seu email para confirmar.', type: 'success' });
-           setIsSignUp(false); // Switch back to login
-        }
-      } else {
-        await signIn(email, password);
-        // O redirecionamento ocorre automaticamente via onAuthStateChange no App.tsx
-      }
+      await signIn(email, password);
+      // O redirecionamento ocorre automaticamente via onAuthStateChange no App.tsx
     } catch (error: any) {
-      setMessage({ text: error.message || 'Erro ao autenticar.', type: 'error' });
+      setMessage({ text: 'Email ou senha inválidos.', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -42,7 +33,7 @@ export const Auth: React.FC = () => {
         
         <div className="p-8">
             <h2 className="text-xl font-bold text-slate-800 mb-6 text-center">
-                {isSignUp ? 'Criar Nova Conta' : 'Acesse sua Conta'}
+                Acesse sua Conta
             </h2>
 
             {message && (
@@ -86,19 +77,15 @@ export const Auth: React.FC = () => {
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                     ) : (
-                        isSignUp ? 'Cadastrar' : 'Entrar'
+                        'Entrar'
                     )}
                 </button>
             </form>
 
             <div className="mt-6 text-center pt-4 border-t border-slate-100">
-                <button 
-                    type="button"
-                    onClick={() => { setIsSignUp(!isSignUp); setMessage(null); }}
-                    className="text-sm text-slate-500 hover:text-blue-600 font-medium"
-                >
-                    {isSignUp ? 'Já tem uma conta? Faça Login' : 'Não tem conta? Cadastre-se'}
-                </button>
+                <p className="text-xs text-slate-400">
+                    Não possui acesso? Contate o administrador do sistema.
+                </p>
             </div>
         </div>
       </div>
