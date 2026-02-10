@@ -116,6 +116,26 @@ export interface DashboardData {
   };
 }
 
+// --- NOVO: TIPO TERRENO (LAND) ---
+export interface Land {
+  id?: string;
+  created_at?: string;
+  code?: string;
+  description: string;
+  zipCode: string;
+  address: string;
+  number: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  area: number;
+  price: number;
+  status: 'Em Análise' | 'Em Negociação' | 'Comprado' | 'Descartado';
+  notes: string;
+  ownerName?: string;
+  ownerContact?: string;
+}
+
 export interface ProjectData {
   id?: string;
   created_at?: string;
@@ -123,6 +143,9 @@ export interface ProjectData {
   type: ProjectType;
   standard: StandardType;
   
+  // Vinculo com Terreno
+  landId?: string;
+
   area: number; // Área Total Construída (Global - calculada ou manual)
   landArea: number; // Área do Terreno
   

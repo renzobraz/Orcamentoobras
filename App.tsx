@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
-import { ProjectData, ProjectType, StandardType, CalculationResults, DetailedCosts, ApartmentUnit, SegmentedCosts, QuickFeasibilityData, DashboardData, FinancialAssumptions } from './types';
+import { ProjectData, ProjectType, StandardType, CalculationResults, DetailedCosts, ApartmentUnit, SegmentedCosts, QuickFeasibilityData, DashboardData, FinancialAssumptions, Land } from './types';
 import { DEFAULT_CUB, INITIAL_DATA, SQL_FIX_SCRIPT } from './constants';
 import { InputField } from './components/InputSection';
 import { analyzeFeasibility } from './services/geminiService';
@@ -11,6 +11,7 @@ import { DashboardSection } from './components/DashboardSection';
 const CostBreakdownChart = React.lazy(() => import('./components/ChartSection').then(module => ({ default: module.CostBreakdownChart })));
 const CashFlowChart = React.lazy(() => import('./components/ChartSection').then(module => ({ default: module.CashFlowChart })));
 const SettingsSection = React.lazy(() => import('./components/SettingsSection').then(module => ({ default: module.SettingsSection })));
+const LandRegistry = React.lazy(() => import('./components/LandRegistry').then(module => ({ default: module.LandRegistry })));
 
 const App: React.FC = () => {
   // Deep copy initial data to avoid reference issues
@@ -22,7 +23,7 @@ const App: React.FC = () => {
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   
   // Define 'inputs' (Detalhada) como aba padrão
-  const [activeTab, setActiveTab] = useState<'inputs' | 'dashboard' | 'history' | 'settings'>('inputs');
+  const [activeTab, setActiveTab] = useState<'inputs' | 'dashboard' | 'history' | 'lands' | 'settings'>('inputs');
   const [isDbConnected, setIsDbConnected] = useState(false);
   
   // Controle de Visualização do Dashboard
@@ -31,6 +32,7 @@ const App: React.FC = () => {
   // Estado para Modais
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [showLandSelectModal, setShowLandSelectModal] = useState(false);
 
   useEffect(() => {
     checkDbConnection();
@@ -107,7 +109,7 @@ const App: React.FC = () => {
     } catch (e: any) {
       console.error("Erro no handleSave:", e);
       const errorMsg = e.message || '';
-      if (errorMsg.includes('financials') || errorMsg.includes('column') || errorMsg.includes('does not exist')) {
+      if (errorMsg.includes('financials') || errorMsg.includes('column') || errorMsg.includes('does not exist') || errorMsg.includes('lands')) {
          setShowSqlModal(true); 
       } else {
          const newId = data.id || crypto.randomUUID();
@@ -136,6 +138,27 @@ const App: React.FC = () => {
       localStorage.setItem('calcconstru_projects', JSON.stringify(newList));
       setProjects(newList);
     }
+  };
+
+  const handleLandSelect = (land: Land) => {
+      setData(prev => ({
+          ...prev,
+          landId: land.id,
+          landArea: land.area,
+          landValue: land.price,
+          quickFeasibility: {
+              ...(prev.quickFeasibility || INITIAL_DATA.quickFeasibility),
+              landArea: land.area,
+              askingPrice: land.price
+          },
+          media: {
+              ...(prev.media),
+              locationLink: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${land.address}, ${land.number} - ${land.city}, ${land.state}`)}`
+          },
+          // Opcional: Adicionar anotações nas observações
+          observations: (prev.observations || '') + `\n[Terreno Vinculado: ${land.description}]`
+      }));
+      setShowLandSelectModal(false);
   };
 
   // --- Handlers Detalhados ---
@@ -485,6 +508,20 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {showLandSelectModal && (
+          <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
+               <div className="bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-fadeIn">
+                   <div className="flex justify-between items-center mb-4">
+                       <h2 className="text-xl font-bold text-slate-800">Vincular Terreno ao Projeto</h2>
+                       <button onClick={() => setShowLandSelectModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+                   </div>
+                   <Suspense fallback={<div>Carregando terrenos...</div>}>
+                       <LandRegistry onSelectForProject={handleLandSelect} />
+                   </Suspense>
+               </div>
+          </div>
+      )}
+
       {showSqlModal && (
           <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl animate-fadeIn">
@@ -531,7 +568,10 @@ const App: React.FC = () => {
                     📊 Dashboard
                 </button>
                 <button onClick={() => setActiveTab('history')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'history' ? 'bg-slate-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
-                    📚 Empreendimentos
+                    📚 Projetos
+                </button>
+                <button onClick={() => setActiveTab('lands')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'lands' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
+                    📍 Terrenos
                 </button>
              </div>
              
@@ -548,6 +588,14 @@ const App: React.FC = () => {
             <div className="max-w-4xl mx-auto">
                 <Suspense fallback={<div className="flex justify-center py-20">Carregando...</div>}>
                     <SettingsSection onConfigUpdate={checkDbConnection} />
+                </Suspense>
+            </div>
+        )}
+
+        {activeTab === 'lands' && (
+            <div className="max-w-6xl mx-auto">
+                <Suspense fallback={<div className="flex justify-center py-20">Carregando Terrenos...</div>}>
+                    <LandRegistry />
                 </Suspense>
             </div>
         )}
@@ -679,8 +727,13 @@ const App: React.FC = () => {
               </section>
 
               {/* Zoneamento, Pavimentos e Terreno */}
-              <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-teal-500 rounded-full"></span>Zoneamento & Terreno</h2>
+              <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><span className="w-1 h-6 bg-teal-500 rounded-full"></span>Zoneamento & Terreno</h2>
+                    <button onClick={() => setShowLandSelectModal(true)} className="text-xs bg-teal-100 text-teal-700 px-3 py-1.5 rounded-lg font-bold hover:bg-teal-200 transition-colors">
+                        📍 Importar de Cadastro
+                    </button>
+                </div>
                 
                 {/* Terreno e Altura */}
                 <div className="grid grid-cols-2 gap-4 mb-6">

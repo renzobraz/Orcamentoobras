@@ -8,9 +8,8 @@ export const DEFAULT_CUB: Record<StandardType, number> = {
 };
 
 export const SQL_FIX_SCRIPT = `-- SCRIPT DE CORREÇÃO COMPLETO (Rode no Supabase SQL Editor)
--- Atualizado para incluir TODAS as colunas necessárias
 
--- 1. Cria a tabela base se não existir
+-- 1. PROJETOS (PROJECTS)
 create table if not exists public.projects (
   "id" uuid primary key default gen_random_uuid(),
   "created_at" timestamp with time zone default timezone('utc'::text, now()) not null,
@@ -19,9 +18,9 @@ create table if not exists public.projects (
   "standard" text not null
 );
 
--- 2. Adiciona colunas básicas (ALTER TABLE)
+-- Colunas básicas
 alter table public.projects add column if not exists "area" numeric default 0;
-alter table public.projects add column if not exists "landArea" numeric default 0; -- CORREÇÃO: Coluna essencial
+alter table public.projects add column if not exists "landArea" numeric default 0;
 alter table public.projects add column if not exists "cubValue" numeric default 0;
 alter table public.projects add column if not exists "landValue" numeric default 0;
 alter table public.projects add column if not exists "foundationCost" numeric default 0;
@@ -34,9 +33,10 @@ alter table public.projects add column if not exists "brokerName" text;
 alter table public.projects add column if not exists "brokerPhone" text;
 alter table public.projects add column if not exists "observations" text;
 alter table public.projects add column if not exists "useDetailedCosts" boolean default false;
-alter table public.projects add column if not exists "useSegmentedCosts" boolean default false; -- CORREÇÃO: Coluna essencial
+alter table public.projects add column if not exists "useSegmentedCosts" boolean default false;
+alter table public.projects add column if not exists "landId" text; -- Vinculo opcional
 
--- 3. COLUNAS NOVAS (JSONB)
+-- Colunas JSONB
 alter table public.projects add column if not exists "detailedCosts" jsonb;
 alter table public.projects add column if not exists "units" jsonb;
 alter table public.projects add column if not exists "zoning" jsonb;
@@ -45,10 +45,35 @@ alter table public.projects add column if not exists "segmentedCosts" jsonb;
 alter table public.projects add column if not exists "quickFeasibility" jsonb;
 alter table public.projects add column if not exists "financials" jsonb;
 
--- 4. Permissões
+-- 2. TERRENOS (LANDS) - NOVA TABELA
+create table if not exists public.lands (
+  "id" uuid primary key default gen_random_uuid(),
+  "created_at" timestamp with time zone default timezone('utc'::text, now()) not null,
+  "description" text not null,
+  "code" text,
+  "zipCode" text,
+  "address" text,
+  "number" text,
+  "neighborhood" text,
+  "city" text,
+  "state" text,
+  "area" numeric default 0,
+  "price" numeric default 0,
+  "status" text default 'Em Análise',
+  "notes" text,
+  "ownerName" text,
+  "ownerContact" text
+);
+
+-- 3. Permissões
 alter table public.projects enable row level security;
+alter table public.lands enable row level security;
+
 drop policy if exists "Public Access Policy" on public.projects;
 create policy "Public Access Policy" on public.projects for all using (true) with check (true);
+
+drop policy if exists "Public Lands Policy" on public.lands;
+create policy "Public Lands Policy" on public.lands for all using (true) with check (true);
 `;
 
 export const INITIAL_DATA = {
