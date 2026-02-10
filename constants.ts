@@ -78,7 +78,8 @@ create or replace function public.handle_new_user()
 returns trigger as $$
 begin
   insert into public.profiles (id, email, role)
-  values (new.id, new.email, 'admin');
+  values (new.id, new.email, 'admin')
+  on conflict (id) do nothing; -- Evita erro se já existir
   return new;
 end;
 $$ language plpgsql security definer;
@@ -89,6 +90,11 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- BACKFILL: Insere perfis para usuários que já existem (Importante para seu usuário atual)
+insert into public.profiles (id, email, role)
+select id, email, 'admin' from auth.users
+where id not in (select id from public.profiles);
 
 -- 4. Permissões
 alter table public.projects enable row level security;
