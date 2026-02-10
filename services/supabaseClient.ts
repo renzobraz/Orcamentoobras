@@ -1,5 +1,5 @@
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, User, Session } from '@supabase/supabase-js';
 import { ProjectData, Land } from '../types';
 
 const STORAGE_KEY_URL = 'calcconstru_sb_url';
@@ -44,24 +44,58 @@ export const getStoredConfig = () => {
   };
 };
 
-// --- Operations ---
+// --- AUTH OPERATIONS ---
+
+export const signIn = async (email: string, password: string) => {
+  const client = getSupabase();
+  if (!client) throw new Error("Supabase não configurado.");
+  
+  const { data, error } = await client.auth.signInWithPassword({
+    email,
+    password,
+  });
+  
+  if (error) throw error;
+  return data;
+};
+
+export const signUp = async (email: string, password: string) => {
+  const client = getSupabase();
+  if (!client) throw new Error("Supabase não configurado.");
+  
+  const { data, error } = await client.auth.signUp({
+    email,
+    password,
+  });
+  
+  if (error) throw error;
+  return data;
+};
+
+export const signOut = async () => {
+  const client = getSupabase();
+  if (!client) return;
+  const { error } = await client.auth.signOut();
+  if (error) throw error;
+};
+
+export const getSession = async () => {
+  const client = getSupabase();
+  if (!client) return null;
+  const { data } = await client.auth.getSession();
+  return data.session;
+};
+
+// --- DATA OPERATIONS ---
 
 export const testConnection = async (): Promise<boolean> => {
   const client = getSupabase();
   if (!client) return false;
   try {
-    // Tenta um select simples na tabela projects
     const { error } = await client.from('projects').select('count', { count: 'exact', head: true });
-    
-    // Se não der erro de rede/autenticação, consideramos conectado
     if (!error) return true;
-    
-    // Erros aceitáveis que indicam que a conexão existe, mas talvez a tabela não
-    if (error.code === '42P01') return true; // Undefined table
-    
-    // Se o erro for de token inválido, retornamos false
+    if (error.code === '42P01') return true; 
     if (error.code === 'PGRST301' || error.message.includes('JWT')) return false;
-
     return true; 
   } catch (e) {
     return false;
@@ -75,7 +109,7 @@ export const saveProject = async (project: ProjectData) => {
   const payload = { ...project };
 
   if (payload.id && payload.id.length > 10) { 
-      // UPDATE: Se existe ID válido, atualiza
+      // UPDATE
       const { data, error } = await client
         .from('projects')
         .update(payload)
@@ -88,8 +122,8 @@ export const saveProject = async (project: ProjectData) => {
       }
       return data?.[0];
   } else {
-      // INSERT: Se não existe ID, cria novo
-      if (payload.id) delete payload.id; // Garante que não envia ID vazio/invalido
+      // INSERT
+      if (payload.id) delete payload.id; 
 
       const { data, error } = await client
         .from('projects')
